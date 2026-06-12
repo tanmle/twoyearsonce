@@ -13,6 +13,7 @@ export interface Player {
   loseCount: number;
   loseDoubleCount: number;
   totalPenaltyVnd: number; // Penalty aggregate in VND
+  role?: 'player' | 'admin';
   isCurrentUser?: boolean; 
 }
 
@@ -28,12 +29,16 @@ export interface Match {
   handicap: number; // e.g. -0.5, -0.75, 0.0, 0.5
   time: string; // e.g. "22:00", "01:45"
   date: string; // e.g. "20 Oct, 2024"
+  kickoffAt?: string; // ISO timestamp for reliable sorting
   stadium: string; // e.g. "Anfield", "Old Trafford"
   status: 'UPCOMING' | 'LIVE' | 'FINISHED';
   homeGoals?: number;
   awayGoals?: number;
   liveTimeText?: string; // e.g. "LIVE 67'", "LIVE IN 2H 45M"
   isHot?: boolean;
+  externalId?: string;
+  lastSyncedAt?: string;
+  oddsUpdatedAt?: string;
 }
 
 export type PredictionChoice = 'HOME' | 'AWAY' | null;
@@ -46,6 +51,13 @@ export interface Prediction {
 }
 
 export type PenaltyStatus = 'WIN' | 'LOSE_HALF' | 'LOSE' | 'LOSE_DOUBLE' | 'SETTLE_PENDING';
+
+export interface Settlement {
+  matchId: string;
+  playerId: string;
+  status: Exclude<PenaltyStatus, 'SETTLE_PENDING'>;
+  penaltyVnd: number;
+}
 
 export interface ActivityFeedItem {
   id: string;

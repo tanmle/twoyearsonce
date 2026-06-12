@@ -1,5 +1,6 @@
 import { Player, Match, Prediction } from '../types';
-import { Calendar, User, CheckCircle2, XCircle, Users, BarChart3, Minimize2, MapPin, Trophy } from 'lucide-react';
+import { Calendar, CheckCircle2, XCircle, Users, BarChart3, Minimize2, MapPin, Trophy } from 'lucide-react';
+import { settlePrediction } from '../domain/settlement';
 
 interface MatchDetailsProps {
   currentPlayer: Player;
@@ -33,52 +34,20 @@ export default function MatchDetails({
     const player = players.find((p) => p.id === pred.playerId);
     return {
       playerId: pred.playerId,
-      name: player ? player.name : 'Unknown Player',
+      name: player ? player.name : 'Người chơi không rõ',
       avatar: player ? player.avatar : '',
       choice: pred.choice,
       timestamp: pred.timestamp,
     };
   });
 
-  // Calculate user outcome if match is finished or live
+  // Calculate user outcome using the shared settlement rules
   const currentUserPred = matchPredictions.find((p) => p.playerId === currentPlayer.id);
   const isFinished = match.status === 'FINISHED';
-  
-  // Decide prediction outcome
-  let outcomeStatus: 'WIN' | 'LOSE_HALF' | 'LOSE' | 'LOSE_DOUBLE' | 'PENDING' = 'PENDING';
-  let penaltyVndAccrued = 0;
-
-  if (isFinished && match.homeGoals !== undefined && match.awayGoals !== undefined) {
-    const homeGoalsCorrected = match.homeGoals + match.handicap; // Handicap is applied to home goals!
-    const isHomeWin = homeGoalsCorrected > match.awayGoals;
-    const isDraw = homeGoalsCorrected === match.awayGoals;
-
-    if (currentUserPred?.choice) {
-      if (currentUserPred.choice === 'HOME') {
-        if (isHomeWin) {
-          outcomeStatus = 'WIN';
-          penaltyVndAccrued = 0;
-        } else if (isDraw) {
-          outcomeStatus = 'LOSE_HALF';
-          penaltyVndAccrued = 5000;
-        } else {
-          outcomeStatus = 'LOSE';
-          penaltyVndAccrued = 10000;
-        }
-      } else if (currentUserPred.choice === 'AWAY') {
-        if (!isHomeWin && !isDraw) {
-          outcomeStatus = 'WIN';
-          penaltyVndAccrued = 0;
-        } else if (isDraw) {
-          outcomeStatus = 'LOSE_HALF';
-          penaltyVndAccrued = 5000;
-        } else {
-          outcomeStatus = 'LOSE_DOUBLE';
-          penaltyVndAccrued = 20000;
-        }
-      }
-    }
-  }
+  const userSettlement = currentUserPred ? settlePrediction(match, currentUserPred) : null;
+  const outcomeStatus = userSettlement?.status === 'SETTLE_PENDING' || !userSettlement ? 'CHỜ' : userSettlement.status;
+  const penaltyVndAccrued = userSettlement?.penaltyVnd ?? 0;
+  const statusLabel = match.status === 'FINISHED' ? 'ĐÃ KẾT THÚC' : match.status === 'LIVE' ? 'ĐANG ĐÁ' : 'SẮP DIỄN RA';
 
   return (
     <div className="space-y-8 font-sans">
@@ -86,13 +55,13 @@ export default function MatchDetails({
       <div className="flex justify-between items-end bg-[#0A1622] border-b border-white/10 pb-6 p-1">
         <div>
           <span className="text-[10px] uppercase tracking-[0.4em] text-brand-primary font-bold">
-            FIFA Spec Sheet • Arena Match Details
+            BeerCup • Chi tiết trận đấu
           </span>
           <h3 className="font-display italic font-medium text-4xl text-white tracking-tight mt-1">
             chi tiết kì đấu
           </h3>
           <p className="text-[10px] text-text-muted mt-2 font-mono uppercase tracking-widest">
-            Consensus Dashboard & Match Report
+            Tổng hợp lựa chọn & báo cáo trận
           </p>
         </div>
         <button
@@ -108,7 +77,7 @@ export default function MatchDetails({
       <section className="relative overflow-hidden rounded-none border border-white/10 bg-[#0A1622] p-8">
         <div className="flex flex-col md:flex-row justify-between items-center gap-8 relative z-10">
           
-          {/* Home team */}
+          {/* Chủ nhà team */}
           <div className="flex flex-col items-center md:items-end flex-1 text-center md:text-right">
             <div className="w-16 h-16 bg-[#040D17] border border-white/10 rounded-none flex items-center justify-center mb-4 p-1">
               <img
@@ -118,7 +87,7 @@ export default function MatchDetails({
               />
             </div>
             <h2 className="font-sans font-black text-xl text-white uppercase tracking-wider">{match.homeTeam}</h2>
-            <span className="text-[8px] font-mono text-text-muted mt-1 uppercase tracking-widest font-bold select-none">HOME</span>
+            <span className="text-[8px] font-mono text-text-muted mt-1 uppercase tracking-widest font-bold select-none">CHỦ NHÀ</span>
           </div>
 
           {/* Scores indicator */}
@@ -126,7 +95,7 @@ export default function MatchDetails({
             <div className={`font-mono text-[9px] px-3.5 py-1 rounded-none font-bold select-none tracking-widest ${
               match.status === 'FINISHED' ? 'bg-[#222] text-white border border-white/15' : 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20 animate-pulse'
             }`}>
-              {match.status === 'FINISHED' ? 'FINISHED' : match.status === 'LIVE' ? 'LIVE' : 'UPCOMING'}
+              {statusLabel}
             </div>
             
             <div className="flex items-center gap-5">
@@ -140,11 +109,11 @@ export default function MatchDetails({
             </div>
 
             <div className="font-mono text-[10px] text-brand-primary bg-brand-primary/10 px-3.5 py-1 rounded-none mt-2 border border-brand-primary/20 select-none tracking-widest font-bold">
-              HANDICAP RATIO: {match.handicap > 0 ? `+${match.handicap}` : match.handicap}
+              KÈO CHẤP: {match.handicap > 0 ? `+${match.handicap}` : match.handicap}
             </div>
           </div>
 
-          {/* Away Team */}
+          {/* Đội khách Team */}
           <div className="flex flex-col items-center md:items-start flex-1 text-center md:text-left">
             <div className="w-16 h-16 bg-[#040D17] border border-white/10 rounded-none flex items-center justify-center mb-4 p-1">
               <img
@@ -154,12 +123,12 @@ export default function MatchDetails({
               />
             </div>
             <h2 className="font-sans font-black text-xl text-white uppercase tracking-wider">{match.awayTeam}</h2>
-            <span className="text-[8px] font-mono text-text-muted mt-1 uppercase tracking-widest font-bold select-none">AWAY</span>
+            <span className="text-[8px] font-mono text-text-muted mt-1 uppercase tracking-widest font-bold select-none">ĐỘI KHÁCH</span>
           </div>
 
         </div>
 
-        {/* Stadium & Time metadata details footer block */}
+        {/* Sân & Time metadata details footer block */}
         <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap justify-center gap-x-8 gap-y-3 text-xs text-text-muted font-medium select-none uppercase tracking-widest">
           <div className="flex items-center gap-2">
             <Trophy className="w-4 h-4 text-brand-primary" />
@@ -167,11 +136,11 @@ export default function MatchDetails({
           </div>
           <div className="flex items-center gap-2">
             <MapPin className="w-4 h-4 text-white" />
-            <span className="text-white text-[10px]">{match.stadium || "PitchSide Elite Stadium"}</span>
+            <span className="text-white text-[10px]">{match.stadium || "Sân vận động"}</span>
           </div>
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-brand-primary" />
-            <span className="text-white text-[10px]">{match.date} • {match.status === 'FINISHED' ? 'Ended' : match.time}</span>
+            <span className="text-white text-[10px]">{match.date} • {match.status === 'FINISHED' ? 'Đã kết thúc' : match.time}</span>
           </div>
         </div>
       </section>
@@ -231,17 +200,17 @@ export default function MatchDetails({
                           ? 'bg-brand-primary/5 text-brand-primary border-brand-primary/45'
                           : 'bg-white/5 text-white border-white/20'
                       }`}>
-                        {predict.choice === 'HOME' ? 'HOME' : 'AWAY'}
+                        {predict.choice === 'HOME' ? 'CHỦ NHÀ' : 'ĐỘI KHÁCH'}
                       </span>
                       
                       <div className="text-right min-w-[70px]">
                         <div className="font-mono text-[8px] text-text-muted uppercase tracking-widest font-bold">
-                          {isFinished ? 'STATUS' : 'PENDING'}
+                          {isFinished ? 'TRẠNG THÁI' : 'CHỜ'}
                         </div>
                         <div className={`font-mono text-[10px] font-bold ${
                           isFinished ? 'text-status-not-lose uppercase' : 'text-brand-primary'
                         }`}>
-                          {isFinished ? 'SETTLED' : 'LOCKED'}
+                          {isFinished ? 'ĐÃ TÍNH' : 'ĐÃ KHÓA'}
                         </div>
                       </div>
                     </div>
@@ -259,7 +228,7 @@ export default function MatchDetails({
           <div className="bg-[#0A1622] border border-white/10 p-5 rounded-none">
             <h3 className="font-display italic font-bold text-lg text-white mb-4 flex items-center gap-2 select-none">
               <BarChart3 className="w-4 h-4 text-brand-primary" />
-              consensus statistics
+              thống kê lựa chọn
             </h3>
             
             <div className="space-y-4 select-none">
@@ -278,11 +247,11 @@ export default function MatchDetails({
               <div className="flex justify-between items-center font-mono text-[10px] font-black uppercase tracking-wider">
                 <div className="flex flex-col items-start">
                   <span className="text-brand-primary text-base font-extrabold">{homePercent}%</span>
-                  <span className="text-text-muted mt-1 uppercase tracking-widest text-[9px]">HOME ({homeCount})</span>
+                  <span className="text-text-muted mt-1 uppercase tracking-widest text-[9px]">CHỦ NHÀ ({homeCount})</span>
                 </div>
                 <div className="flex flex-col items-end">
                   <span className="text-white text-base font-extrabold">{awayPercent}%</span>
-                  <span className="text-text-muted mt-1 uppercase tracking-widest text-[9px]">AWAY ({awayCount})</span>
+                  <span className="text-text-muted mt-1 uppercase tracking-widest text-[9px]">ĐỘI KHÁCH ({awayCount})</span>
                 </div>
               </div>
             </div>
@@ -293,25 +262,25 @@ export default function MatchDetails({
             <div className={`rounded-none p-5 border select-none ${
               outcomeStatus === 'WIN'
                 ? 'border-brand-primary/30 bg-[#00F06A]/5'
-                : outcomeStatus === 'PENDING'
+                : outcomeStatus === 'CHỜ'
                 ? 'border-white/20 bg-white/5'
                 : 'border-status-lose/30 bg-status-lose/5'
             }`}>
               <h3 className="font-display italic font-bold text-lg text-white mb-4 flex items-center gap-1 uppercase tracking-widest">
-                Your Outcome
+                Kết quả của bạn
               </h3>
               
               <div className="flex flex-col items-center text-center space-y-3">
                 <div className={`w-12 h-12 rounded-none flex items-center justify-center p-2 border ${
                   outcomeStatus === 'WIN'
                     ? 'bg-status-not-lose/10 text-status-not-lose border-status-not-lose/20'
-                    : outcomeStatus === 'PENDING'
+                    : outcomeStatus === 'CHỜ'
                     ? 'bg-white/5 text-white border-white/25'
                     : 'bg-status-lose/10 text-status-lose border-status-lose/25'
                 }`}>
                   {outcomeStatus === 'WIN' ? (
                     <CheckCircle2 className="w-7 h-7" />
-                  ) : outcomeStatus === 'PENDING' ? (
+                  ) : outcomeStatus === 'CHỜ' ? (
                     <Users className="w-5 h-5 text-white" />
                   ) : (
                     <XCircle className="w-7 h-7 text-status-lose animate-pulse" />
@@ -322,34 +291,34 @@ export default function MatchDetails({
                   <div className={`font-mono text-xs font-black uppercase tracking-widest ${
                     outcomeStatus === 'WIN'
                       ? 'text-status-not-lose'
-                      : outcomeStatus === 'PENDING'
+                      : outcomeStatus === 'CHỜ'
                       ? 'text-brand-primary'
                       : 'text-status-lose'
                   }`}>
                     {outcomeStatus === 'WIN'
-                      ? 'OFFICIAL_WIN'
-                      : outcomeStatus === 'PENDING'
-                      ? 'UNSOLVED'
+                      ? 'KHÔNG THUA'
+                      : outcomeStatus === 'CHỜ'
+                      ? 'CHƯA TÍNH'
                       : outcomeStatus === 'LOSE_DOUBLE'
-                      ? 'LOSE_DOUBLE'
+                      ? 'THUA ĐÔI'
                       : outcomeStatus === 'LOSE_HALF'
-                      ? 'LOSE_HALF'
-                      : 'MATCH_LOSE'}
+                      ? 'THUA NỬA'
+                      : 'THUA'}
                   </div>
                   <p className="text-[9px] text-text-muted font-mono tracking-widest uppercase mt-1">
-                    Prediction: {currentUserPred.choice === 'HOME' ? 'Home' : 'Away'}
+                    Lựa chọn: {currentUserPred.choice === 'HOME' ? 'Chủ nhà' : 'Đội khách'}
                   </p>
                 </div>
 
                 <div className="w-full pt-4 border-t border-white/5 flex justify-between text-[10px] font-mono uppercase tracking-widest">
-                  <span className="text-text-muted">Final Score</span>
+                  <span className="text-text-muted">Tỉ số cuối</span>
                   <span className="text-white font-bold">
                     {isFinished ? `${match.homeGoals} - ${match.awayGoals}` : '--'}
                   </span>
                 </div>
 
                 <div className="w-full flex justify-between text-[10px] font-mono pt-1 uppercase tracking-widest">
-                  <span className="text-text-muted">Penalty Accrued</span>
+                  <span className="text-text-muted">Tiền phạt</span>
                   <span className={`font-bold ${outcomeStatus === 'WIN' ? 'text-status-not-lose' : 'text-status-lose'}`}>
                     {isFinished ? `${penaltyVndAccrued.toLocaleString('vi-VN')} VND` : '0 VND'}
                   </span>

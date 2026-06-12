@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
-import { Player, Match, Prediction, ActivityFeedItem } from './types';
-import {
-  INITIAL_PLAYERS,
-  INITIAL_MATCHES,
-  INITIAL_PREDICTIONS,
-  INITIAL_FEED,
-} from './data';
+import { Player, Match, Prediction, ActivityFeedItem, Settlement } from './types';
 import { fetchWorldCupMatches } from './services/api';
+import { getOutcomeKey, settlePrediction } from './domain/settlement';
+import { applyPlayerStats } from './domain/playerStats';
+import { clearBeerCupLocalState, loadJson, LOCAL_STORAGE_KEYS, saveJson } from './storage/localStore';
+import { isSupabaseConfigured } from './lib/supabase';
+import {
+  fetchActivitiesFromSupabase,
+  fetchMatchesFromSupabase,
+  fetchPlayersFromSupabase,
+  fetchPredictionsFromSupabase,
+  fetchSettlementsFromSupabase,
+  insertActivityToSupabase,
+  upsertMatchesToSupabase,
+  upsertPredictionToSupabase,
+} from './services/supabaseData';
 
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -14,123 +22,237 @@ import MatchList from './components/MatchList';
 import Leaderboard from './components/Leaderboard';
 import MatchDetails from './components/MatchDetails';
 import IdentitySelector from './components/IdentitySelector';
+import Login from './components/Login';
+
+const EMPTY_PLAYER: Player = {
+  id: '',
+  name: 'Đang tải',
+  avatar: 'https://ui-avatars.com/api/?name=BeerCup&background=00F06A&color=02090F&bold=true',
+  totalPredictionsCount: 0,
+  notLoseCount: 0,
+  loseHalfCount: 0,
+  loseCount: 0,
+  loseDoubleCount: 0,
+  totalPenaltyVnd: 0,
+};
+
+function buildDefaultHomePredictions(
+  players: Player[],
+  matches: Match[],
+  existingPredictions: Prediction[]
+) {
+  const defaults: Prediction[] = [];
+  const openMatches = matches.filter((match) => match.status !== 'FINISHED');
+
+  openMatches.forEach((match) => {
+    players.forEach((player) => {
+      const alreadyPredicted = existingPredictions.some(
+        (prediction) => prediction.matchId === match.id && prediction.playerId === player.id
+      );
+
+      if (!alreadyPredicted) {
+        defaults.push({
+          matchId: match.id,
+          playerId: player.id,
+          choice: 'HOME',
+          timestamp: 'Mặc định chọn chủ nhà',
+        });
+      }
+    });
+  });
+
+  return defaults;
+}
+
+function persistDefaultPredictions(defaultPredictions: Prediction[]) {
+  if (!isSupabaseConfigured || defaultPredictions.length === 0) return;
+
+  Promise.all(defaultPredictions.map((prediction) => upsertPredictionToSupabase(prediction))).catch((error) => {
+    console.error('Failed to sync default home predictions to Supabase', error);
+  });
+}
 
 export default function App() {
   // Tab navigation state
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   
   // Players state with persistent initialization
-  const [players, setPlayers] = useState<Player[]>(() => {
-    const saved = localStorage.getItem('pred_league_players');
-    return saved ? JSON.parse(saved) : INITIAL_PLAYERS;
-  });
+  const [players, setPlayers] = useState<Player[]>(() =>
+    loadJson(LOCAL_STORAGE_KEYS.players, [])
+  );
 
   // Current logged in user ID state with persistent initialization
-  const [currentPlayerId, setCurrentPlayerId] = useState<string>(() => {
-    const saved = localStorage.getItem('pred_league_current_player_id');
-    return saved ? JSON.parse(saved) : 'huy'; // Default is 'huy' as in screenshots
-  });
+  const [currentPlayerId, setCurrentPlayerId] = useState<string>(() =>
+    loadJson(LOCAL_STORAGE_KEYS.currentPlayerId, '')
+  );
 
   // Matches state with persistent initialization
-  const [matches, setMatches] = useState<Match[]>(() => {
-    const saved = localStorage.getItem('pred_league_matches');
-    return saved ? JSON.parse(saved) : INITIAL_MATCHES;
-  });
+  const [matches, setMatches] = useState<Match[]>(() =>
+    loadJson(LOCAL_STORAGE_KEYS.matches, [])
+  );
 
   // Predictions state with persistent initialization
-  const [predictions, setPredictions] = useState<Prediction[]>(() => {
-    const saved = localStorage.getItem('pred_league_predictions');
-    return saved ? JSON.parse(saved) : INITIAL_PREDICTIONS;
-  });
+  const [predictions, setPredictions] = useState<Prediction[]>(() =>
+    loadJson(LOCAL_STORAGE_KEYS.predictions, [])
+  );
 
   // Activity Feed state with persistent initialization
-  const [activities, setActivities] = useState<ActivityFeedItem[]>(() => {
-    const saved = localStorage.getItem('pred_league_activities');
-    return saved ? JSON.parse(saved) : INITIAL_FEED;
-  });
+  const [activities, setActivities] = useState<ActivityFeedItem[]>(() =>
+    loadJson(LOCAL_STORAGE_KEYS.activities, [])
+  );
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
 
   // Active match for detail report popup overlay
   const [activeSelectedMatch, setActiveSelectedMatch] = useState<Match | null>(null);
+  const [predictionPlayerId, setPredictionPlayerId] = useState<string>('');
 
   // Syncing state
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isLoadingRealData, setIsLoadingRealData] = useState<boolean>(isSupabaseConfigured);
 
   // Sync to outer localStorage to persist sandbox changes reliably
   useEffect(() => {
-    localStorage.setItem('pred_league_players', JSON.stringify(players));
+    saveJson(LOCAL_STORAGE_KEYS.players, players);
   }, [players]);
 
   useEffect(() => {
-    localStorage.setItem('pred_league_current_player_id', JSON.stringify(currentPlayerId));
+    saveJson(LOCAL_STORAGE_KEYS.currentPlayerId, currentPlayerId);
   }, [currentPlayerId]);
 
   useEffect(() => {
-    localStorage.setItem('pred_league_matches', JSON.stringify(matches));
+    saveJson(LOCAL_STORAGE_KEYS.matches, matches);
   }, [matches]);
 
   useEffect(() => {
-    localStorage.setItem('pred_league_predictions', JSON.stringify(predictions));
+    saveJson(LOCAL_STORAGE_KEYS.predictions, predictions);
   }, [predictions]);
 
   useEffect(() => {
-    localStorage.setItem('pred_league_activities', JSON.stringify(activities));
+    saveJson(LOCAL_STORAGE_KEYS.activities, activities);
   }, [activities]);
 
-  // Find actualPlayer object
-  const currentPlayer = players.find((p) => p.id === currentPlayerId) || players[0];
+  // Load shared real data from Supabase when configured.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
 
-  // Handler to set prediction choice (Home/Away Voted)
+    let isMounted = true;
+
+    async function loadRealData() {
+      try {
+        setIsLoadingRealData(true);
+        const [remotePlayers, remoteMatches, remotePredictions, remoteSettlements, remoteActivities] = await Promise.all([
+          fetchPlayersFromSupabase(),
+          fetchMatchesFromSupabase(),
+          fetchPredictionsFromSupabase(),
+          fetchSettlementsFromSupabase(),
+          fetchActivitiesFromSupabase(),
+        ]);
+
+        if (!isMounted) return;
+
+        const defaultPredictions = buildDefaultHomePredictions(remotePlayers, remoteMatches, remotePredictions);
+        const predictionsWithDefaults = [...remotePredictions, ...defaultPredictions];
+
+        setPlayers(remotePlayers);
+        setMatches(remoteMatches);
+        setPredictions(predictionsWithDefaults);
+        setSettlements(remoteSettlements);
+        setActivities(remoteActivities);
+        persistDefaultPredictions(defaultPredictions);
+
+        if (currentPlayerId && !remotePlayers.some((player) => player.id === currentPlayerId)) {
+          setCurrentPlayerId('');
+        }
+      } catch (error) {
+        console.error('Failed to load real data from Supabase', error);
+      } finally {
+        if (isMounted) setIsLoadingRealData(false);
+      }
+    }
+
+    loadRealData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Find actualPlayer object
+  const playersWithStats = applyPlayerStats(players, predictions, settlements);
+  const currentPlayer = currentPlayerId
+    ? playersWithStats.find((p) => p.id === currentPlayerId) || EMPTY_PLAYER
+    : EMPTY_PLAYER;
+  const predictionPlayer = predictionPlayerId
+    ? playersWithStats.find((p) => p.id === predictionPlayerId) || currentPlayer
+    : currentPlayer;
+
+  // Handler to set prediction choice (Chủ nhà/Đội khách Voted)
   const handleTogglePrediction = (matchId: string, choice: 'HOME' | 'AWAY') => {
     const matchItem = matches.find((m) => m.id === matchId);
-    if (!matchItem || matchItem.status === 'FINISHED') return;
+    if (!matchItem || matchItem.status === 'FINISHED' || !predictionPlayer.id) return;
 
     // Remove existing prediction for this player-match combo
     const filteredPreds = predictions.filter(
-      (p) => !(p.matchId === matchId && p.playerId === currentPlayerId)
+      (p) => !(p.matchId === matchId && p.playerId === predictionPlayer.id)
     );
 
     const newPrediction: Prediction = {
       matchId,
-      playerId: currentPlayerId,
+      playerId: predictionPlayer.id,
       choice,
       timestamp: 'Vừa xong',
     };
 
     setPredictions([...filteredPreds, newPrediction]);
+    if (isSupabaseConfigured) {
+      upsertPredictionToSupabase(newPrediction).catch((error) => {
+        console.error('Failed to sync prediction to Supabase', error);
+      });
+    }
 
     // Insert new timeline log item
     const logItem: ActivityFeedItem = {
       id: `act_${Date.now()}`,
-      playerName: currentPlayer.name,
-      actionText: 'changed prediction to',
+      playerName: predictionPlayer.name,
+      actionText: currentPlayer.id === predictionPlayer.id ? 'đã chọn' : `được ${currentPlayer.name} chọn hộ`,
       targetText: choice === 'HOME' ? matchItem.homeTeam : matchItem.awayTeam,
       type: 'change_prediction',
       timeAgo: 'VỪA XONG',
     };
 
     setActivities([logItem, ...activities]);
+    if (isSupabaseConfigured) {
+      insertActivityToSupabase(logItem, predictionPlayer.id).catch((error) => {
+        console.error('Failed to sync activity to Supabase', error);
+      });
+    }
   };
 
   // Handler to switch player identity
   const handleSelectPlayer = (player: Player) => {
     setCurrentPlayerId(player.id);
+    setPredictionPlayerId(player.id);
     // When switching player, we stay on same view or transition directly
     setCurrentTab('dashboard');
   };
 
   // Handler to reset application statistics
   const handleResetMatches = () => {
-    localStorage.removeItem('pred_league_players');
-    localStorage.removeItem('pred_league_current_player_id');
-    localStorage.removeItem('pred_league_matches');
-    localStorage.removeItem('pred_league_predictions');
-    localStorage.removeItem('pred_league_activities');
+    clearBeerCupLocalState();
     
-    setPlayers(INITIAL_PLAYERS);
-    setCurrentPlayerId('huy');
-    setMatches(INITIAL_MATCHES);
-    setPredictions(INITIAL_PREDICTIONS);
-    setActivities(INITIAL_FEED);
+    setPlayers([]);
+    setCurrentPlayerId('');
+    setPredictionPlayerId('');
+    setMatches([]);
+    setPredictions([]);
+    setActivities([]);
+    setCurrentTab('dashboard');
+    setActiveSelectedMatch(null);
+  };
+
+  const handleLogout = () => {
+    setCurrentPlayerId('');
+    setPredictionPlayerId('');
     setCurrentTab('dashboard');
     setActiveSelectedMatch(null);
   };
@@ -138,19 +260,25 @@ export default function App() {
   // Handler to sync matches from API
   const handleSyncMatches = async () => {
     try {
+      if (currentPlayer.role !== 'admin') {
+        alert('Chỉ quản trị viên mới được đồng bộ kèo chấp.');
+        return;
+      }
+
       setIsSyncing(true);
       const apiMatches = await fetchWorldCupMatches();
+      if (isSupabaseConfigured) {
+        await upsertMatchesToSupabase(apiMatches);
+      }
       
-      // Merge with existing matches but remove the initial dummy data and old 2022 test data
+      // Merge with existing real matches.
       setMatches((prevMatches) => {
-        // Filter out dummy data ('m...') and old 2022 data ('wc_...'). Keep only 'wc26_'
         const realMatches = prevMatches.filter(m => m.id.startsWith('wc26_'));
         const merged = [...realMatches];
         
         apiMatches.forEach(apiMatch => {
           const existingIdx = merged.findIndex(m => m.id === apiMatch.id);
           if (existingIdx >= 0) {
-            // Keep existing handicap if it's non-zero
             const existingMatch = merged[existingIdx];
             merged[existingIdx] = {
               ...apiMatch,
@@ -160,6 +288,13 @@ export default function App() {
             merged.push(apiMatch);
           }
         });
+
+        const defaultPredictions = buildDefaultHomePredictions(players, merged, predictions);
+        if (defaultPredictions.length > 0) {
+          setPredictions((prevPredictions) => [...prevPredictions, ...defaultPredictions]);
+          persistDefaultPredictions(defaultPredictions);
+        }
+
         return merged;
       });
       
@@ -168,7 +303,7 @@ export default function App() {
         id: `act_${Date.now()}`,
         playerName: currentPlayer.name,
         actionText: 'synced',
-        targetText: 'World Cup Matches',
+        targetText: 'các trận World Cup',
         type: 'join_prediction',
         timeAgo: 'VỪA XONG',
       };
@@ -181,130 +316,59 @@ export default function App() {
     }
   };
 
-  // Auto-sync matches on initial load
-  useEffect(() => {
-    // We can auto-sync since the open-source API has no strict rate limits
-    // We only want to trigger it once on mount
-    handleSyncMatches();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Highly robust result calculator for Sandbox simulator
+  // Sandbox result calculator. Uses shared settlement rules so the UI and backend can agree.
   const handleUpdateMatchStatus = (
     matchId: string,
     status: 'FINISHED',
     homeGoals: number,
     awayGoals: number
   ) => {
-    // 1. Update the match goals and status
-    const updatedMatches = matches.map((m) => {
-      if (m.id === matchId) {
-        return {
-          ...m,
-          status,
-          homeGoals,
-          awayGoals,
-        };
-      }
-      return m;
-    });
-
-    setMatches(updatedMatches);
-
-    // Get target match
     const targetMatch = matches.find((m) => m.id === matchId);
     if (!targetMatch) return;
 
-    // Applied handicap calculations: Home Goals + Handicap vs Away Goals
-    // E.g. home final = 2, handicap = -0.5 => 1.5. If away final = 1, home wins (1.5 > 1).
-    const homeGoalsCorrected = homeGoals + targetMatch.handicap;
-    const isHomeWin = homeGoalsCorrected > awayGoals;
-    const isDraw = homeGoalsCorrected === awayGoals;
+    const settledMatch: Match = {
+      ...targetMatch,
+      status,
+      homeGoals,
+      awayGoals,
+    };
 
-    // Find predictions for this match to compute penalties for players
+    setMatches(matches.map((m) => (m.id === matchId ? settledMatch : m)));
+
     const matchPredictions = predictions.filter((p) => p.matchId === matchId);
 
-    // Copy player entities to update stats
-    const updatedPlayers = players.map((player) => {
-      // Find what this player predicted
-      const pPred = matchPredictions.find((pred) => pred.playerId === player.id);
-      
-      let revisedPlayer = { ...player };
+    setPlayers(players.map((player) => {
+      const playerPrediction = matchPredictions.find((pred) => pred.playerId === player.id);
+      if (!playerPrediction?.choice) return player;
 
-      if (pPred?.choice) {
-        // Increment prediction counts
-        revisedPlayer.totalPredictionsCount += 1;
+      const settlement = settlePrediction(settledMatch, playerPrediction);
+      if (settlement.status === 'SETTLE_PENDING') return player;
 
-        if (pPred.choice === 'HOME') {
-          if (isHomeWin) {
-            revisedPlayer.notLoseCount += 1; // +0 Penalty
-          } else if (isDraw) {
-            revisedPlayer.loseHalfCount += 1; // Lose half (0.5 pts - 5,000 VND)
-            revisedPlayer.totalPenaltyVnd += 5000;
-          } else {
-            revisedPlayer.loseCount += 1; // Lose standard (1.5 pts - 10,000 VND)
-            revisedPlayer.totalPenaltyVnd += 10000;
-          }
-        } else if (pPred.choice === 'AWAY') {
-          if (!isHomeWin && !isDraw) {
-            revisedPlayer.notLoseCount += 1; // +0 Penalty
-          } else if (isDraw) {
-            revisedPlayer.loseHalfCount += 1; // Lose half (0.5 pts - 5,000 VND)
-            revisedPlayer.totalPenaltyVnd += 5000;
-          } else {
-            // Away lose can be double risk if opposing handicap
-            revisedPlayer.loseDoubleCount += 1; // Lose double (2.0 pts - 20,000 VND)
-            revisedPlayer.totalPenaltyVnd += 20000;
-          }
-        }
-      }
-      
-      return revisedPlayer;
-    });
+      return {
+        ...player,
+        totalPredictionsCount: player.totalPredictionsCount + 1,
+        notLoseCount: player.notLoseCount + (settlement.status === 'WIN' ? 1 : 0),
+        loseHalfCount: player.loseHalfCount + (settlement.status === 'LOSE_HALF' ? 1 : 0),
+        loseCount: player.loseCount + (settlement.status === 'LOSE' ? 1 : 0),
+        loseDoubleCount: player.loseDoubleCount + (settlement.status === 'LOSE_DOUBLE' ? 1 : 0),
+        totalPenaltyVnd: player.totalPenaltyVnd + settlement.penaltyVnd,
+      };
+    }));
 
-    setPlayers(updatedPlayers);
-
-    // Generate neat activities report for each participant
     const brandNewLogs: ActivityFeedItem[] = matchPredictions.map((pred, i) => {
-      const plyr = players.find((p) => p.id === pred.playerId);
-      const name = plyr ? plyr.name : 'Người chơi';
-
-      let penaltyLabel: 'WIN' | 'LOSE_HALF' | 'LOSE' | 'LOSE_DOUBLE' = 'WIN';
-      let outcomeLabel = 'not_lose';
-
-      if (pred.choice === 'HOME') {
-        if (isHomeWin) {
-          penaltyLabel = 'WIN';
-          outcomeLabel = 'not_lose';
-        } else if (isDraw) {
-          penaltyLabel = 'LOSE_HALF';
-          outcomeLabel = 'lose_half';
-        } else {
-          penaltyLabel = 'LOSE';
-          outcomeLabel = 'lose';
-        }
-      } else if (pred.choice === 'AWAY') {
-        if (!isHomeWin && !isDraw) {
-          penaltyLabel = 'WIN';
-          outcomeLabel = 'not_lose';
-        } else if (isDraw) {
-          penaltyLabel = 'LOSE_HALF';
-          outcomeLabel = 'lose_half';
-        } else {
-          penaltyLabel = 'LOSE_DOUBLE';
-          outcomeLabel = 'lose_double';
-        }
-      }
+      const player = players.find((p) => p.id === pred.playerId);
+      const settlement = settlePrediction(settledMatch, pred);
+      const statusType = settlement.status === 'SETTLE_PENDING' ? 'WIN' : settlement.status;
 
       return {
         id: `sim_log_${Date.now()}_${i}`,
-        playerName: name,
-        actionText: 'received prediction payout status',
-        targetText: outcomeLabel.toUpperCase(),
+        playerName: player ? player.name : 'Người chơi',
+        actionText: 'nhận kết quả dự đoán',
+        targetText: getOutcomeKey(settlement.status).toUpperCase(),
         type: 'penalty',
-        statusType: penaltyLabel,
+        statusType,
         timeAgo: 'VỪA XONG',
-      } as ActivityFeedItem;
+      };
     });
 
     setActivities([...brandNewLogs, ...activities]);
@@ -317,7 +381,7 @@ export default function App() {
       return (
         <MatchDetails
           currentPlayer={currentPlayer}
-          players={players}
+          players={playersWithStats}
           match={activeSelectedMatch}
           predictions={predictions}
           onClose={() => setActiveSelectedMatch(null)}
@@ -330,10 +394,12 @@ export default function App() {
         return (
           <Dashboard
             currentPlayer={currentPlayer}
-            players={players}
+            predictionPlayer={predictionPlayer}
+            players={playersWithStats}
             matches={matches}
             predictions={predictions}
             activities={activities}
+            onSelectPredictionPlayer={setPredictionPlayerId}
             onTogglePrediction={handleTogglePrediction}
             onOpenMatchDetails={setActiveSelectedMatch}
             onSyncMatches={handleSyncMatches}
@@ -344,9 +410,11 @@ export default function App() {
         return (
           <MatchList
             currentPlayer={currentPlayer}
-            players={players}
+            predictionPlayer={predictionPlayer}
+            players={playersWithStats}
             matches={matches}
             predictions={predictions}
+            onSelectPredictionPlayer={setPredictionPlayerId}
             onTogglePrediction={handleTogglePrediction}
             onOpenMatchDetails={setActiveSelectedMatch}
             onUpdateMatchStatus={handleUpdateMatchStatus}
@@ -357,7 +425,7 @@ export default function App() {
         return (
           <Leaderboard
             currentPlayer={currentPlayer}
-            players={players}
+            players={playersWithStats}
             onSelectPlayer={handleSelectPlayer}
           />
         );
@@ -365,14 +433,23 @@ export default function App() {
         return (
           <IdentitySelector
             currentPlayer={currentPlayer}
-            players={players}
-            onSelectPlayer={handleSelectPlayer}
+            players={playersWithStats}
           />
         );
       default:
         return null;
     }
   };
+
+  if (!currentPlayer.id) {
+    return (
+      <Login
+        players={playersWithStats}
+        isLoading={isLoadingRealData}
+        onLogin={handleSelectPlayer}
+      />
+    );
+  }
 
   return (
     <div className="flex max-w-[1240px] mx-auto min-h-screen relative">
@@ -385,7 +462,7 @@ export default function App() {
           setActiveSelectedMatch(null);
           setCurrentTab(tab);
         }}
-        onLogout={handleResetMatches}
+        onLogout={handleLogout}
       />
 
       {/* Main Content scrollable container, desktop with proper margins relative to sidebar */}

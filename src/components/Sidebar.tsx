@@ -16,10 +16,10 @@ export default function Sidebar({
 }: SidebarProps) {
   // Navigation tabs definition
   const tabs = [
-    { id: 'dashboard', label: 'Trophy Dashboard', icon: LayoutGrid },
-    { id: 'matches', label: 'Fixtures & Scores', icon: ListTodo },
-    { id: 'leaderboard', label: 'World cup standings', icon: Trophy },
-    { id: 'profile', label: 'Fan credentials', icon: Users },
+    { id: 'dashboard', label: 'Tổng quan', icon: LayoutGrid },
+    { id: 'matches', label: 'Lịch đấu & Tỉ số', icon: ListTodo },
+    { id: 'leaderboard', label: 'Bảng xếp hạng', icon: Trophy },
+    { id: 'profile', label: 'Tài khoản', icon: Users },
   ];
 
   return (
@@ -29,16 +29,23 @@ export default function Sidebar({
         <div className="flex justify-between items-center px-4 py-3">
           <div className="flex flex-col">
             <h1 className="font-display font-extrabold text-xl text-white tracking-tight">
-              Pred<span className="text-brand-primary">Cup</span>
+              Beer<span className="text-brand-primary">Cup</span>
             </h1>
             <span className="text-[8px] uppercase tracking-[0.3em] text-brand-primary font-bold">
-              United 2026 • Active
+              World Cup 2026 • Đang chạy
             </span>
           </div>
           <div className="flex items-center gap-3">
             <button className="p-2 text-brand-primary hover:bg-brand-surface-high rounded-none transition-colors relative">
               <Bell className="w-5 h-5" />
               <span className="absolute top-1 right-1 w-2 h-2 bg-status-lose rounded-full"></span>
+            </button>
+            <button
+              onClick={onLogout}
+              className="p-2 text-text-muted hover:text-status-lose hover:bg-brand-surface-high rounded-none transition-colors"
+              aria-label="Đăng xuất"
+            >
+              <LogOut className="w-5 h-5" />
             </button>
             <div 
               onClick={() => setCurrentTab('profile')}
@@ -59,13 +66,13 @@ export default function Sidebar({
       <nav className="hidden lg:flex flex-col h-screen w-64 fixed left-0 top-0 bg-brand-surface-low border-r border-white/10 p-6 gap-3 z-30 font-sans">
         <div className="mb-8">
           <div className="flex flex-col gap-1 mb-8">
-            <span className="text-[9px] uppercase tracking-[0.4em] text-brand-primary font-bold">United 2026</span>
+            <span className="text-[9px] uppercase tracking-[0.4em] text-brand-primary font-bold">World Cup 2026</span>
             <span className="text-[8px] uppercase tracking-[0.3em] opacity-40">USA • CANADA • MEXICO</span>
           </div>
 
           <div className="flex items-center gap-2">
             <h1 className="font-display font-extrabold text-4xl text-white tracking-tighter cursor-pointer lowercase" onClick={() => setCurrentTab('dashboard')}>
-              pred<span className="text-brand-primary">cup</span>
+              beer<span className="text-brand-primary">cup</span>
             </h1>
           </div>
           
@@ -87,8 +94,8 @@ export default function Sidebar({
               <p className="font-sans font-bold text-xs text-white truncate group-hover:text-brand-primary transition-colors uppercase tracking-wider">
                 {currentPlayer.name}
               </p>
-              <p className="text-[10px] text-text-muted italic">
-                Rank #{currentPlayer.id === 'huy' ? 3 : currentPlayer.id === 'anhquoc' ? 1 : 4} Fan ID
+              <p className="text-[10px] text-text-muted italic uppercase tracking-wider">
+                {currentPlayer.role === 'admin' ? 'Quản trị viên' : 'Người chơi'}
               </p>
             </div>
           </div>
@@ -118,14 +125,14 @@ export default function Sidebar({
           })}
         </div>
 
-        {/* Desktop Footer Logout */}
+        {/* Desktop Footer Đăng xuất */}
         <div className="mt-auto border-t border-white/5 pt-4">
           <button
             onClick={onLogout}
             className="w-full text-[10px] font-sans uppercase tracking-widest text-text-muted hover:text-status-lose hover:bg-[#110808] transition-all px-4 py-2.5 rounded-none flex items-center gap-2 cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Reset credentials</span>
+            <span>Đăng xuất</span>
           </button>
         </div>
       </nav>
@@ -148,7 +155,7 @@ export default function Sidebar({
             >
               <Icon className="w-4 h-4" />
               <span className="font-mono text-[8px] uppercase tracking-wider">
-                {tab.id === 'profile' ? 'Profile' : tab.label.split(' ')[0]}
+                {tab.id === 'profile' ? 'Tài khoản' : tab.label.split(' ')[0]}
               </span>
             </button>
           );

@@ -93,6 +93,9 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
       });
     }
 
+    const syncedAt = new Date().toISOString();
+    const oddsUpdatedAt = oddsData ? syncedAt : undefined;
+
     // 4. Map to our Match interface
     const matches: Match[] = gamesList.map(apiGame => {
       // Parse dates (Format: "M/D/YYYY HH:mm")
@@ -143,7 +146,8 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
 
       return {
         id: `wc26_${apiGame.id}`,
-        league: 'WORLD CUP' as any,
+        externalId: apiGame.id,
+        league: 'WORLD CUP',
         homeTeam: homeTeamName,
         awayTeam: awayTeamName,
         homeLogo: homeLogo,
@@ -151,12 +155,15 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
         handicap: handicap,
         time: status === 'FINISHED' ? 'FINISHED' : formattedTime,
         date: formattedDate,
-        stadium: 'Stadium ' + apiGame.id, // Simplify stadium for now
+        kickoffAt: fixtureDate.toISOString(),
+        stadium: 'Sân ' + apiGame.id, // Simplify stadium for now
         status: status,
         homeGoals: isNaN(homeGoals as any) ? undefined : homeGoals,
         awayGoals: isNaN(awayGoals as any) ? undefined : awayGoals,
-        liveTimeText: isLive ? `LIVE ${apiGame.time_elapsed}'` : undefined,
+        liveTimeText: isLive ? `TRỰC TIẾP ${apiGame.time_elapsed}'` : undefined,
         isHot: status === 'LIVE' || status === 'UPCOMING',
+        lastSyncedAt: syncedAt,
+        oddsUpdatedAt,
       };
     });
 

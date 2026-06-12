@@ -1,12 +1,15 @@
 import { useState, FormEvent } from 'react';
 import { Player, Match, Prediction } from '../types';
-import { Search, Calendar, Lock, AlertTriangle, HelpCircle, Sparkles, Check, Flame } from 'lucide-react';
+import { Search, Calendar, Lock, AlertTriangle, Sparkles, Check } from 'lucide-react';
+import { sortMatchesForFixtures } from '../domain/matches';
 
 interface MatchListProps {
   currentPlayer: Player;
+  predictionPlayer: Player;
   players: Player[];
   matches: Match[];
   predictions: Prediction[];
+  onSelectPredictionPlayer: (playerId: string) => void;
   onTogglePrediction: (matchId: string, choice: 'HOME' | 'AWAY') => void;
   onOpenMatchDetails: (match: Match) => void;
   onUpdateMatchStatus: (matchId: string, status: 'FINISHED', homeGoals: number, awayGoals: number) => void;
@@ -15,9 +18,11 @@ interface MatchListProps {
 
 export default function MatchList({
   currentPlayer,
+  predictionPlayer,
   players,
   matches,
   predictions,
+  onSelectPredictionPlayer,
   onTogglePrediction,
   onOpenMatchDetails,
   onUpdateMatchStatus,
@@ -33,7 +38,7 @@ export default function MatchList({
   const [sandboxAwayGoals, setSandboxAwayGoals] = useState(1);
 
   // Filter matches based on search term and selected status filter
-  const filteredMatches = matches.filter((match) => {
+  const filteredMatches = sortMatchesForFixtures(matches.filter((match) => {
     const matchesSearch =
       match.homeTeam.toLowerCase().includes(searchTerm.toLowerCase()) ||
       match.awayTeam.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -47,7 +52,7 @@ export default function MatchList({
       return match.status === 'FINISHED';
     }
     return true; // ALL
-  });
+  }));
 
   // Handle simulation trigger
   const handleSimulate = (e: FormEvent) => {
@@ -59,7 +64,7 @@ export default function MatchList({
   };
 
   // Find non-finished matches for score simulation
-  const openMatchesForSim = matches.filter((m) => m.status !== 'FINISHED');
+  const openMatchesForSim = sortMatchesForFixtures(matches.filter((m) => m.status !== 'FINISHED'));
 
   return (
     <div className="space-y-8 font-sans">
@@ -68,30 +73,43 @@ export default function MatchList({
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-6">
           <div>
             <span className="text-[10px] uppercase tracking-[0.4em] text-brand-primary font-bold">
-              FIFA Stadium Ledger • Arena Fixtures
+              BeerCup • Lịch đấu
             </span>
             <h2 className="font-display italic font-medium text-4xl text-white tracking-tight mt-1">
               lịch thi đấu & tỉ số
             </h2>
             <p className="text-[10px] text-text-muted mt-2 font-mono uppercase tracking-widest">
-              WORLD CUP 2026 STADIUM STANDS • ACTIVE HANDICAPS
+              World Cup 2026 • Kèo đang mở
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Simulation trigger */}
-            <button
-              onClick={() => setShowSandbox(!showSandbox)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-none border border-brand-primary text-brand-primary text-[10px] font-mono font-bold hover:bg-brand-primary hover:text-black transition-all cursor-pointer uppercase tracking-widest"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Mô phỏng kết quả
-            </button>
-          </div>
+          {currentPlayer.role === 'admin' && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <select
+                value={predictionPlayer.id}
+                onChange={(event) => onSelectPredictionPlayer(event.target.value)}
+                className="bg-[#102133] border border-white/10 rounded-none px-3 py-2.5 text-xs text-white focus:outline-none focus:border-brand-primary uppercase tracking-wider"
+              >
+                {players.map((player) => (
+                  <option key={player.id} value={player.id} className="bg-[#102133]">
+                    Đặt kèo cho {player.name}
+                  </option>
+                ))}
+              </select>
+              {/* Simulation trigger */}
+              <button
+                onClick={() => setShowSandbox(!showSandbox)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-none border border-brand-primary text-brand-primary text-[10px] font-mono font-bold hover:bg-brand-primary hover:text-black transition-all cursor-pointer uppercase tracking-widest"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Mô phỏng kết quả
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Dynamic Sandbox Simulator UI block */}
-        {showSandbox && (
+        {currentPlayer.role === 'admin' && showSandbox && (
           <div className="p-5 rounded-none border border-brand-primary/20 bg-[#0A1622] space-y-4">
             <div className="flex items-center justify-between border-b border-white/5 pb-2">
               <span className="font-mono text-[10px] font-bold text-brand-primary uppercase tracking-widest flex items-center gap-2 animate-pulse">
@@ -102,12 +120,12 @@ export default function MatchList({
                 onClick={onResetMatches}
                 className="text-[9px] font-mono text-status-lose uppercase tracking-widest hover:underline"
               >
-                Reset dữ liệu
+                Xóa dữ liệu cục bộ
               </button>
             </div>
             {openMatchesForSim.length === 0 ? (
               <p className="text-xs text-text-muted italic">
-                Tất cả các trận đấu hiện tại đã kết thúc! Bạn có thể Reset dữ liệu để mô phỏng lại.
+                Tất cả các trận đấu hiện tại đã kết thúc! Bạn có thể Xóa dữ liệu cục bộ để mô phỏng lại.
               </p>
             ) : (
               <form onSubmit={handleSimulate} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -128,7 +146,7 @@ export default function MatchList({
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-mono text-text-muted uppercase tracking-widest">Bàn Home:</label>
+                  <label className="text-[9px] font-mono text-text-muted uppercase tracking-widest">Bàn Chủ nhà:</label>
                   <input
                     type="number"
                     min="0"
@@ -139,7 +157,7 @@ export default function MatchList({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-mono text-text-muted uppercase tracking-widest">Bàn Away:</label>
+                  <label className="text-[9px] font-mono text-text-muted uppercase tracking-widest">Bàn Đội khách:</label>
                   <input
                     type="number"
                     min="0"
@@ -222,7 +240,7 @@ export default function MatchList({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredMatches.map((match) => {
             const hasPredicted = predictions.find(
-              (p) => p.playerId === currentPlayer.id && p.matchId === match.id
+              (p) => p.playerId === predictionPlayer.id && p.matchId === match.id
             );
 
             return (
@@ -236,7 +254,7 @@ export default function MatchList({
                 {match.status === 'LIVE' && (
                   <div className="absolute top-0 right-0 py-1 px-3 bg-[#e53935] text-white flex items-center gap-1.5 leading-none">
                     <span className="w-1.5 h-1.5 bg-white animate-pulse"></span>
-                    <span className="font-mono text-[9px] font-bold tracking-wider">LIVE {match.liveTimeText || "67'"}</span>
+                    <span className="font-mono text-[9px] font-bold tracking-wider">TRỰC TIẾP {match.liveTimeText || "67'"}</span>
                   </div>
                 )}
 
@@ -260,7 +278,7 @@ export default function MatchList({
                     {match.status === 'FINISHED' && (
                       <div className="flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded-none text-text-muted border border-white/5">
                         <Lock className="w-3 h-3 text-brand-primary" />
-                        <span className="font-mono text-[9px] uppercase tracking-widest font-bold">LOCKED</span>
+                        <span className="font-mono text-[9px] uppercase tracking-widest font-bold">ĐÃ KHÓA</span>
                       </div>
                     )}
                   </div>
@@ -270,7 +288,7 @@ export default function MatchList({
                     onClick={() => onOpenMatchDetails(match)}
                     className="flex justify-between items-center bg-[#040D17] p-3 border border-white/5 hover:border-brand-primary/20 transition-all cursor-pointer group/box mt-3"
                   >
-                    {/* Home Side */}
+                    {/* Chủ nhà Side */}
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="w-10 h-10 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover/box:border-brand-primary/30">
                         <img
@@ -300,7 +318,7 @@ export default function MatchList({
                       )}
                     </div>
 
-                    {/* Away Side */}
+                    {/* Đội khách Side */}
                     <div className="flex items-center justify-end gap-3 flex-1 text-right min-w-0">
                       <span className="font-sans uppercase tracking-wider font-bold text-xs text-white truncate group-hover/box:text-brand-primary transition-colors">
                         {match.awayTeam}
@@ -317,14 +335,14 @@ export default function MatchList({
                   </div>
                 </div>
 
-                {/* Handicap badge & Home / Away buttons */}
+                {/* Handicap badge & Chủ nhà / Đội khách buttons */}
                 <div className="mt-5 pt-4 border-t border-white/5 space-y-4">
                   <div className="flex justify-between items-center text-xs font-mono">
                     <span className="text-[10px] text-text-muted uppercase tracking-widest font-bold">
-                      handicap:
+                      kèo chấp:
                     </span>
                     <span className="bg-brand-primary/10 text-brand-primary px-3 py-0.5 text-[9px] uppercase tracking-widest font-bold border border-brand-primary/20 select-none">
-                      HDP {match.handicap > 0 ? `+${match.handicap}` : match.handicap}
+                      Kèo {match.handicap > 0 ? `+${match.handicap}` : match.handicap}
                     </span>
                   </div>
 
@@ -339,11 +357,11 @@ export default function MatchList({
                         }`}
                       >
                         <span className="text-[8px] uppercase font-mono tracking-widest">
-                          CHOOSE HOME
+                          CHỌN CỬA
                         </span>
                         <span className="text-sm font-sans font-extrabold mt-1 tracking-wider flex items-center gap-1">
                           {hasPredicted?.choice === 'HOME' && <Check className="w-3.5 h-3.5 text-brand-primary" />}
-                          PRO 1.95
+                          {match.homeTeam}
                         </span>
                       </button>
 
@@ -356,11 +374,11 @@ export default function MatchList({
                         }`}
                       >
                         <span className="text-[8px] uppercase font-mono tracking-widest">
-                          CHOOSE AWAY
+                          CHỌN CỬA
                         </span>
                         <span className="text-sm font-sans font-extrabold mt-1 tracking-wider flex items-center gap-1">
                           {hasPredicted?.choice === 'AWAY' && <Check className="w-3.5 h-3.5 text-brand-primary" />}
-                          PRO 1.82
+                          {match.awayTeam}
                         </span>
                       </button>
                     </div>
@@ -373,8 +391,8 @@ export default function MatchList({
                       <span className="font-bold text-brand-primary uppercase tracking-widest">
                         {hasPredicted
                           ? hasPredicted.choice === 'HOME'
-                            ? `Home (${match.homeTeam})`
-                            : `Away (${match.awayTeam})`
+                            ? `Chủ nhà (${match.homeTeam})`
+                            : `Đội khách (${match.awayTeam})`
                           : 'Không tham gia'}
                       </span>
                     </div>
@@ -385,7 +403,7 @@ export default function MatchList({
                   onClick={() => onOpenMatchDetails(match)}
                   className="mt-4 text-center text-[9px] font-mono text-text-muted uppercase tracking-widest hover:text-brand-primary transition-colors cursor-pointer border-t border-white/5 pt-3"
                 >
-                  Báo cáo phân tích Consensus →
+                  Báo cáo tổng hợp lựa chọn →
                 </div>
               </div>
             );

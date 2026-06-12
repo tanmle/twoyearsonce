@@ -4,13 +4,11 @@ import { UserCheck, ShieldCheck } from 'lucide-react';
 interface IdentitySelectorProps {
   currentPlayer: Player;
   players: Player[];
-  onSelectPlayer: (player: Player) => void;
 }
 
 export default function IdentitySelector({
   currentPlayer,
   players,
-  onSelectPlayer,
 }: IdentitySelectorProps) {
   // Sort players by total penalty descending to quickly calculate relative rankings
   const sortedPlayers = [...players].sort((a, b) => a.totalPenaltyVnd - b.totalPenaltyVnd);
@@ -20,7 +18,7 @@ export default function IdentitySelector({
       {/* View Header */}
       <div className="border-white/10 border-b pb-6">
         <span className="text-[10px] uppercase tracking-[0.4em] text-brand-primary font-bold">
-          FIFA Credentials Ledger • Stadium Entrance
+          BeerCup • Tài khoản người chơi
         </span>
         <h2 className="font-display italic font-medium text-4xl text-white tracking-tight mt-1 flex items-center gap-2 select-none">
           <ShieldCheck className="w-6 h-6 text-brand-primary animate-pulse" />
@@ -43,18 +41,17 @@ export default function IdentitySelector({
           return (
             <div
               key={player.id}
-              onClick={() => onSelectPlayer(player)}
-              className={`p-5 rounded-none cursor-pointer border transition-all duration-300 flex flex-col justify-between select-none relative group overflow-hidden ${
+              className={`p-5 rounded-none border transition-all duration-300 flex flex-col justify-between select-none relative group overflow-hidden ${
                 isSelected
                   ? 'border-brand-primary bg-brand-primary/5 scale-[1.01]'
-                  : 'border-white/10 bg-[#0A1622] hover:border-brand-primary/60 hover:bg-[#102133]'
+                  : 'border-white/10 bg-[#0A1622]'
               }`}
             >
               {/* Active selection ribbon badge */}
               {isSelected && (
                 <div className="absolute top-0 right-0 py-1 px-3 bg-brand-primary text-black font-mono text-[8px] font-bold tracking-widest flex items-center gap-1 leading-none">
                   <UserCheck className="w-3.5 h-3.5" />
-                  <span>ACTIVE PLAYER</span>
+                  <span>ĐANG CHỌN</span>
                 </div>
               )}
 
@@ -80,7 +77,7 @@ export default function IdentitySelector({
                     {player.name}
                   </h3>
                   <p className="text-[9px] text-text-muted font-mono mt-1 font-bold uppercase tracking-widest">
-                    Archives: {player.totalPredictionsCount}
+                    lượt: {player.totalPredictionsCount}
                   </p>
                 </div>
               </div>
@@ -88,7 +85,7 @@ export default function IdentitySelector({
               {/* Penalty information block */}
               <div className="mt-5 pt-4 border-t border-white/5 flex justify-between items-center text-xs">
                 <span className="text-[9px] font-mono text-text-muted uppercase tracking-widest font-bold">
-                  Penalty Accrued:
+                  Tiền phạt:
                 </span>
                 <span className={`font-mono font-bold ${
                   player.totalPenaltyVnd === 0 ? 'text-status-not-lose' : 'text-status-lose'
@@ -96,24 +93,11 @@ export default function IdentitySelector({
                   {player.totalPenaltyVnd === 0 ? '0 VND' : `${player.totalPenaltyVnd.toLocaleString('vi-VN')} VND`}
                 </span>
               </div>
-              
-              <div className="text-center mt-3 text-[9px] font-mono uppercase tracking-widest text-brand-primary/60 group-hover:text-brand-primary transition-colors pt-2 border-t border-white/5">
-                Switch Credentials →
-              </div>
 
             </div>
           );
         })}
       </div>
-
-      {/* Identity Selector Help Notes */}
-      <div className="p-5 rounded-none border border-white/10 bg-[#0A1622] select-none text-xs text-text-muted leading-relaxed space-y-2">
-        <h4 className="font-display italic font-bold text-brand-primary text-sm uppercase tracking-widest">Hướng dẫn thi đấu Sandbox:</h4>
-        <p className="font-sans text-xs">
-          Ứng dụng hỗ trợ thay đổi người chơi tức thời! Mỗi tài khoản sẽ có bảng dữ liệu cá nhân, thành tích phạt, và lịch sử dự đoán khác nhau. Khi bạn bấm cược hoặc dùng <strong>Sandbox mô phỏng kết quả</strong> trong Tab Match list, bảng xếp hạng Leaderboard sẽ tự động cập nhật thứ hạng và trật tự của toàn bộ người chơi.
-        </p>
-      </div>
-
     </div>
   );
 }

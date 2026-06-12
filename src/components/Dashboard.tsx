@@ -1,12 +1,15 @@
 import { Player, Match, Prediction, ActivityFeedItem } from '../types';
 import { Trophy, Coins, CheckSquare, Flame, CheckCircle, HelpCircle, Activity } from 'lucide-react';
+import { sortMatchesChronologically } from '../domain/matches';
 
 interface DashboardProps {
   currentPlayer: Player;
+  predictionPlayer: Player;
   players: Player[];
   matches: Match[];
   predictions: Prediction[];
   activities: ActivityFeedItem[];
+  onSelectPredictionPlayer: (playerId: string) => void;
   onTogglePrediction: (matchId: string, choice: 'HOME' | 'AWAY') => void;
   onOpenMatchDetails: (match: Match) => void;
   onSyncMatches: () => void;
@@ -15,10 +18,12 @@ interface DashboardProps {
 
 export default function Dashboard({
   currentPlayer,
+  predictionPlayer,
   players,
   matches,
   predictions,
   activities,
+  onSelectPredictionPlayer,
   onTogglePrediction,
   onOpenMatchDetails,
   onSyncMatches,
@@ -29,14 +34,14 @@ export default function Dashboard({
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dayAfterTomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
 
-  const upcomingMatches = matches.filter(m => {
+  const upcomingMatches = sortMatchesChronologically(matches.filter(m => {
     const d = new Date(m.date);
     return m.status !== 'FINISHED' && d >= todayStart && d < dayAfterTomorrowStart;
-  });
+  }));
 
   const displayMatches = upcomingMatches.length > 0
     ? upcomingMatches
-    : matches.filter(m => m.status !== 'FINISHED').slice(0, 3);
+    : sortMatchesChronologically(matches.filter(m => m.status !== 'FINISHED')).slice(0, 3);
 
   // Calculate ranks
   // Ranks are ordered by penalty VND ascending (lowest penalty is better, rank 1, 2, 3...)
@@ -45,7 +50,7 @@ export default function Dashboard({
   const currentRank = currentRankIndex !== -1 ? currentRankIndex + 1 : 4;
 
   // Personal predictions count for current player
-  const playerPredictions = predictions.filter((p) => p.playerId === currentPlayer.id);
+  const playerPredictions = predictions.filter((p) => p.playerId === predictionPlayer.id);
   const predictionsCount = playerPredictions.length;
 
   return (
@@ -54,27 +59,47 @@ export default function Dashboard({
       <div className="border-white/10 border-b pb-6 flex justify-between items-end">
         <div>
           <span className="text-[10px] uppercase tracking-[0.4em] text-brand-primary font-bold">
-            FIFA World Cup 2026 • United Champions Glow
+            World Cup 2026 • BeerCup
           </span>
           <h2 className="font-display italic font-medium text-4xl text-white tracking-tight mt-1">
             chào mừng, <span className="text-brand-primary not-italic font-bold">{currentPlayer.name}</span>
           </h2>
           <p className="text-xs text-text-muted mt-2 font-mono uppercase tracking-widest">
-            FIFA Stadium Ledger • Section 26 • Stadium Slip Center
+            Sổ kèo BeerCup • World Cup 2026
           </p>
-        </div>
-        <button
-          onClick={onSyncMatches}
-          disabled={isSyncing}
-          className="bg-brand-primary/10 hover:bg-brand-primary/20 text-brand-primary border border-brand-primary/30 px-4 py-2 rounded-none font-mono text-[10px] uppercase tracking-widest transition-colors disabled:opacity-50 flex items-center space-x-2"
-        >
-          {isSyncing ? (
-            <span className="animate-spin inline-block w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full" />
-          ) : (
-            <Activity className="w-4 h-4" />
+          {currentPlayer.role === 'admin' && (
+            <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-2">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-text-muted font-bold">
+                Đặt kèo cho
+              </span>
+              <select
+                value={predictionPlayer.id}
+                onChange={(event) => onSelectPredictionPlayer(event.target.value)}
+                className="bg-[#102133] border border-white/10 rounded-none px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-primary uppercase tracking-wider"
+              >
+                {players.map((player) => (
+                  <option key={player.id} value={player.id} className="bg-[#102133]">
+                    {player.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
-          <span>{isSyncing ? 'SYNCING...' : 'SYNC DATA'}</span>
-        </button>
+        </div>
+        {currentPlayer.role === 'admin' && (
+          <button
+            onClick={onSyncMatches}
+            disabled={isSyncing}
+            className="bg-brand-primary/10 hover:bg-brand-primary/20 text-brand-primary border border-brand-primary/30 px-4 py-2 rounded-none font-mono text-[10px] uppercase tracking-widest transition-colors disabled:opacity-50 flex items-center space-x-2"
+          >
+            {isSyncing ? (
+              <span className="animate-spin inline-block w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full" />
+            ) : (
+              <Activity className="w-4 h-4" />
+            )}
+            <span>{isSyncing ? 'ĐANG ĐỒNG BỘ...' : 'ĐỒNG BỘ KÈO'}</span>
+          </button>
+        )}
       </div>
 
       {/* Bento Grid layout */}
@@ -91,12 +116,12 @@ export default function Dashboard({
                   <Trophy className="w-4.5 h-4.5" />
                 </div>
                 <span className="text-[9px] font-mono tracking-widest text-brand-primary uppercase">
-                  world standing
+                  thứ hạng
                 </span>
               </div>
               <div className="mt-6">
                 <p className="font-mono text-[9px] text-text-muted uppercase tracking-widest">
-                  TOURNAMENT STANDING
+                  THỨ HẠNG GIẢI ĐẤU
                 </p>
                 <p className="font-display italic font-black text-4xl text-white mt-1">
                   #{currentRank} <span className="text-[10px] font-mono not-italic tracking-normal text-text-muted">/ {players.length}</span>
@@ -111,12 +136,12 @@ export default function Dashboard({
                   <Coins className="w-4.5 h-4.5" />
                 </div>
                 <span className="text-[9px] font-mono tracking-widest text-[#FF265B] uppercase">
-                  penalty liabilities
+                  tiền phạt
                 </span>
               </div>
               <div className="mt-6">
                 <p className="font-mono text-[9px] text-text-muted uppercase tracking-widest">
-                  STADIUM DEBTS ACCRUED
+                  TỔNG TIỀN PHẠT
                 </p>
                 <p className="font-display font-bold text-2xl text-status-lose mt-1 tracking-tight">
                   {currentPlayer.totalPenaltyVnd.toLocaleString('vi-VN')}
@@ -132,15 +157,15 @@ export default function Dashboard({
                   <CheckSquare className="w-4.5 h-4.5" />
                 </div>
                 <span className="text-[9px] font-mono tracking-widest text-text-muted uppercase">
-                  ACTIVE SLIPS
+                  PHIẾU ĐÃ CHỌN
                 </span>
               </div>
               <div className="mt-6">
                 <p className="font-mono text-[9px] text-text-muted uppercase tracking-widest">
-                  COMMITTED PREDICTIONS
+                  DỰ ĐOÁN ĐÃ GỬI
                 </p>
                 <p className="font-display italic font-black text-4xl text-white mt-1">
-                  {predictionsCount} <span className="text-[10px] font-mono not-italic tracking-normal text-text-muted">Archives</span>
+                  {predictionsCount} <span className="text-[10px] font-mono not-italic tracking-normal text-text-muted">lượt</span>
                 </p>
               </div>
             </div>
@@ -151,7 +176,7 @@ export default function Dashboard({
             <div className="space-y-6">
               {displayMatches.map((match) => {
                 const matchPrediction = predictions.find(
-                  (p) => p.matchId === match.id && p.playerId === currentPlayer.id
+                  (p) => p.matchId === match.id && p.playerId === predictionPlayer.id
                 );
 
                 return (
@@ -160,7 +185,7 @@ export default function Dashboard({
                     <div className="bg-[#102133] border-b border-white/10 p-4 flex justify-between items-center">
                       <span className="font-mono text-[10px] text-brand-primary tracking-widest font-bold flex items-center gap-2">
                         <Flame className="w-3.5 h-3.5 text-brand-primary animate-pulse" />
-                        FIFA 2026 MATCH
+                        TRẬN WORLD CUP 2026
                       </span>
                       <span className="font-mono text-[9px] text-text-muted bg-white/5 px-2 py-1 uppercase tracking-widest border border-white/5">
                         {match.time} • {match.date}
@@ -173,7 +198,7 @@ export default function Dashboard({
                         onClick={() => onOpenMatchDetails(match)}
                         className="flex flex-col sm:flex-row justify-around items-center cursor-pointer p-6 border border-white/5 bg-[#0a0a0a] hover:bg-[#151515] hover:border-brand-primary/20 transition-all duration-300 group gap-6"
                       >
-                        {/* Home Team */}
+                        {/* Chủ nhà Team */}
                         <div className="flex flex-col items-center gap-3 flex-1">
                           <div className="w-16 h-16 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover:border-brand-primary/40 transition-colors">
                             <img
@@ -186,23 +211,23 @@ export default function Dashboard({
                           <span className="font-sans uppercase tracking-widest font-bold text-xs text-white text-center truncate w-full group-hover:text-brand-primary transition-colors">
                             {match.homeTeam}
                           </span>
-                          <span className="text-[8px] font-mono text-text-muted tracking-widest uppercase">TEAM ONE [HOME]</span>
+                          <span className="text-[8px] font-mono text-text-muted tracking-widest uppercase">ĐỘI CHỦ NHÀ</span>
                         </div>
 
                         {/* VS & Handicap Information */}
                         <div className="flex flex-col items-center justify-center min-w-[120px] py-2">
                           <span className="text-[10px] font-mono tracking-widest text-brand-secondary uppercase font-bold">
-                            HANDICAP RATIO
+                            KÈO CHẤP
                           </span>
                           <span className="font-display italic font-black text-4xl text-white tracking-widest mt-1">
                             {match.handicap > 0 ? `+${match.handicap}` : match.handicap}
                           </span>
                           <p className="text-[9px] text-text-muted font-mono uppercase tracking-widest mt-2 border-b border-white/10 pb-0.5 group-hover:text-brand-primary transition-colors">
-                            Inspect Match details →
+                            Xem chi tiết trận →
                           </p>
                         </div>
 
-                        {/* Away Team */}
+                        {/* Đội khách Team */}
                         <div className="flex flex-col items-center gap-3 flex-1">
                           <div className="w-16 h-16 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover:border-brand-primary/40 transition-colors">
                             <img
@@ -215,7 +240,7 @@ export default function Dashboard({
                           <span className="font-sans uppercase tracking-widest font-bold text-xs text-white text-center truncate w-full group-hover:text-brand-primary transition-colors">
                             {match.awayTeam}
                           </span>
-                          <span className="text-[8px] font-mono text-text-muted tracking-widest uppercase">TEAM TWO [AWAY]</span>
+                          <span className="text-[8px] font-mono text-text-muted tracking-widest uppercase">ĐỘI KHÁCH</span>
                         </div>
                       </div>
 
@@ -224,12 +249,12 @@ export default function Dashboard({
                         <div className="flex items-center gap-1.5 justify-center sm:justify-start">
                           <HelpCircle className="w-4 h-4 text-brand-primary" />
                           <p className="text-[10px] font-mono text-text-muted uppercase tracking-widest font-bold">
-                            SUBMIT YOUR STADIUM SLIP:
+                            GỬI LỰA CHỌN:
                           </p>
                         </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          {/* Pred HOME */}
+                          {/* Pred CHỦ NHÀ */}
                           <button
                             onClick={() => onTogglePrediction(match.id, 'HOME')}
                             className={`flex items-center justify-center gap-2 py-4 rounded-none border font-sans uppercase tracking-widest text-xs transition-all cursor-pointer ${
@@ -239,10 +264,10 @@ export default function Dashboard({
                             }`}
                           >
                             {matchPrediction?.choice === 'HOME' && <CheckCircle className="w-3.5 h-3.5 text-brand-primary" />}
-                            <span>{match.homeTeam} label</span>
+                            <span>Chọn {match.homeTeam}</span>
                           </button>
 
-                          {/* Pred AWAY */}
+                          {/* Pred ĐỘI KHÁCH */}
                           <button
                             onClick={() => onTogglePrediction(match.id, 'AWAY')}
                             className={`flex items-center justify-center gap-2 py-4 rounded-none border font-sans uppercase tracking-widest text-xs transition-all cursor-pointer ${
@@ -252,7 +277,7 @@ export default function Dashboard({
                             }`}
                           >
                             {matchPrediction?.choice === 'AWAY' && <CheckCircle className="w-3.5 h-3.5 text-brand-primary" />}
-                            <span>{match.awayTeam} label</span>
+                            <span>Chọn {match.awayTeam}</span>
                           </button>
                         </div>
                       </div>
@@ -264,7 +289,7 @@ export default function Dashboard({
             </div>
           ) : (
             <div className="bg-[#0A1622] border border-white/10 rounded-none p-8 flex items-center justify-center">
-              <span className="text-text-muted font-mono uppercase tracking-widest text-xs">No matches found. Please sync data.</span>
+              <span className="text-text-muted font-mono uppercase tracking-widest text-xs">Chưa có trận đấu. Vui lòng đồng bộ dữ liệu.</span>
             </div>
           )}
 
@@ -278,7 +303,7 @@ export default function Dashboard({
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-white/10">
               <h3 className="font-display italic font-bold text-lg text-white flex items-center gap-2">
                 <Trophy className="w-4 h-4 text-brand-primary" />
-                standings snippet
+                bảng xếp hạng nhanh
               </h3>
             </div>
 
@@ -308,7 +333,7 @@ export default function Dashboard({
                         }`}
                       />
                       <span className={`text-xs uppercase tracking-wider truncate ${isUser ? 'font-bold text-white' : 'text-text-muted'}`}>
-                        {player.name} {isUser && <span className="text-[9px] font-mono text-brand-primary">(You)</span>}
+                        {player.name} {isUser && <span className="text-[9px] font-mono text-brand-primary">(Bạn)</span>}
                       </span>
                     </div>
                     <span className="font-mono text-xs font-bold text-brand-primary">
@@ -326,7 +351,7 @@ export default function Dashboard({
               <div className="flex justify-between items-center mb-5 pb-2 border-b border-white/10">
                 <h3 className="font-display italic font-bold text-lg text-white flex items-center gap-2">
                   <Activity className="w-4 h-4 text-brand-primary" />
-                  stadia telegraphs
+                  hoạt động gần đây
                 </h3>
               </div>
 
@@ -375,9 +400,9 @@ export default function Dashboard({
             <div className="pt-4 border-t border-white/5 mt-6 flex items-center justify-between text-[10px] font-mono text-text-muted select-none">
               <span className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 bg-brand-primary animate-pulse"></span>
-                STADIA BROADCAST
+                BẢN TIN BEERCUP
               </span>
-              <span>UNITED 2026 • EDITION</span>
+              <span>WORLD CUP 2026</span>
             </div>
           </div>
 

@@ -22,7 +22,7 @@ export default function Leaderboard({
 
   // Download Leaderboard action - triggers real CSV file download!
   const triggerDownloadCSV = () => {
-    const headers = ['Hạng', 'Người chơi', 'Tổng dự đoán', 'NOT_LOSE', 'LOSE_HALF', 'LOSE', 'LOSE_DOUBLE', 'Tổng Penalty (VND)'];
+    const headers = ['Hạng', 'Người chơi', 'Tổng dự đoán', 'Không thua', 'Thua nửa', 'Thua', 'Thua đôi', 'Tổng tiền phạt (VND)'];
     const rows = sortedPlayers.map((player, index) => [
       index + 1,
       player.name,
@@ -39,7 +39,7 @@ export default function Leaderboard({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `PredCup_Leaderboard_WorldCup2026.csv`);
+    link.setAttribute('download', `BeerCup_BangXepHang_WorldCup2026.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -51,7 +51,7 @@ export default function Leaderboard({
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/10 pb-6">
         <div>
           <span className="text-[10px] uppercase tracking-[0.4em] text-brand-primary font-bold">
-            FIFA Stands Ledger • United Board
+            BeerCup • Bảng tổng sắp
           </span>
           <h1 className="font-display italic font-medium text-4xl text-white tracking-tight mt-1">
             bảng xếp hạng tổng world cup
@@ -100,9 +100,9 @@ export default function Leaderboard({
               {rank2.totalPenaltyVnd === 0 ? '0 VND' : `${rank2.totalPenaltyVnd.toLocaleString('vi-VN')} VND`}
             </p>
             {rank2.id === currentPlayer.id && (
-              <span className="text-[8px] font-mono bg-white/5 border border-white/10 text-white px-2.5 py-0.5 rounded-none mt-3 uppercase tracking-widest font-bold">Acting Player</span>
+              <span className="text-[8px] font-mono bg-white/5 border border-white/10 text-white px-2.5 py-0.5 rounded-none mt-3 uppercase tracking-widest font-bold">Đang đăng nhập</span>
             )}
-            <span className="text-[8px] text-text-muted mt-3 font-mono uppercase tracking-widest">inspect roster →</span>
+            <span className="text-[8px] text-text-muted mt-3 font-mono uppercase tracking-widest">xem hồ sơ →</span>
           </div>
         )}
 
@@ -132,13 +132,13 @@ export default function Leaderboard({
             
             <div className="mt-3 flex gap-2">
               <span className="bg-brand-primary text-black px-3.5 py-1 text-[8px] font-mono font-bold tracking-widest uppercase animate-pulse">
-                KING OF WEEK
+                DẪN ĐẦU TUẦN
               </span>
             </div>
             {rank1.id === currentPlayer.id && (
-              <span className="text-[8px] font-mono bg-white/10 border border-white/20 text-white px-2.5 py-0.5 rounded-none mt-3 uppercase tracking-widest font-bold">Acting Player</span>
+              <span className="text-[8px] font-mono bg-white/10 border border-white/20 text-white px-2.5 py-0.5 rounded-none mt-3 uppercase tracking-widest font-bold">Đang đăng nhập</span>
             )}
-            <span className="text-[8px] text-brand-primary mt-3 font-mono uppercase tracking-widest">inspect roster →</span>
+            <span className="text-[8px] text-brand-primary mt-3 font-mono uppercase tracking-widest">xem hồ sơ →</span>
           </div>
         )}
 
@@ -166,15 +166,15 @@ export default function Leaderboard({
               {rank3.totalPenaltyVnd === 0 ? '0 VND' : `${rank3.totalPenaltyVnd.toLocaleString('vi-VN')} VND`}
             </p>
             {rank3.id === currentPlayer.id && (
-              <span className="text-[8px] font-mono bg-white/5 border border-white/10 text-white px-2.5 py-0.5 rounded-none mt-3 uppercase tracking-widest font-bold">Acting Player</span>
+              <span className="text-[8px] font-mono bg-white/5 border border-white/10 text-white px-2.5 py-0.5 rounded-none mt-3 uppercase tracking-widest font-bold">Đang đăng nhập</span>
             )}
-            <span className="text-[8px] text-text-muted mt-3 font-mono uppercase tracking-widest">inspect roster →</span>
+            <span className="text-[8px] text-text-muted mt-3 font-mono uppercase tracking-widest">xem hồ sơ →</span>
           </div>
         )}
 
       </div>
 
-      {/* Leaderboard Table */}
+      {/* Leaderboard */}
       <div className="bg-[#0A1622] border border-white/10 rounded-none overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[700px]">
@@ -183,11 +183,11 @@ export default function Leaderboard({
                 <th className="px-5 py-4 w-12 text-center select-none">Hạng</th>
                 <th className="px-5 py-4 w-[200px]">Người chơi</th>
                 <th className="px-5 py-4 text-center select-none w-28">Tổng dự đoán</th>
-                <th className="px-4 py-4 text-center select-none text-status-not-lose">NOT_LOSE</th>
-                <th className="px-4 py-4 text-center select-none text-status-lose-half">LOSE_HALF</th>
-                <th className="px-4 py-4 text-center select-none text-status-lose">LOSE</th>
-                <th className="px-4 py-4 text-center select-none text-[#cf2424]">LOSE_DOUBLE</th>
-                <th className="px-5 py-4 text-right w-36">Tổng Penalty</th>
+                <th className="px-4 py-4 text-center select-none text-status-not-lose">Không thua</th>
+                <th className="px-4 py-4 text-center select-none text-status-lose-half">Thua nửa</th>
+                <th className="px-4 py-4 text-center select-none text-status-lose">Thua</th>
+                <th className="px-4 py-4 text-center select-none text-[#cf2424]">Thua đôi</th>
+                <th className="px-5 py-4 text-right w-36">Tổng tiền phạt</th>
               </tr>
             </thead>
             
@@ -227,7 +227,7 @@ export default function Leaderboard({
                           </p>
                           {isUser && (
                             <span className="text-[7px] font-mono bg-brand-primary/10 text-brand-primary px-1 tracking-widest uppercase select-none">
-                              YOU
+                              BẠN
                             </span>
                           )}
                         </div>
@@ -276,19 +276,19 @@ export default function Leaderboard({
         <div className="flex flex-wrap gap-4 text-[9px] font-mono font-bold tracking-widest uppercase select-none">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-not-lose"></span>
-            <span className="text-text-muted">Not Lose: 0 penalty</span>
+            <span className="text-text-muted">Không thua: 0 phạt</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-lose-half"></span>
-            <span className="text-text-muted">Lose Half: 0.5 Penalty</span>
+            <span className="text-text-muted">Thua nửa: 0.5 phạt</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-lose"></span>
-            <span className="text-text-muted">Lose: 1.0 Penalty</span>
+            <span className="text-text-muted">Thua: 1.0 phạt</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-lose-double"></span>
-            <span className="text-text-muted">Lose Double: 2.0 Penalty</span>
+            <span className="text-text-muted">Thua đôi: 2.0 phạt</span>
           </div>
         </div>
 
