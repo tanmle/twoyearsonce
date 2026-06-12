@@ -1,0 +1,6 @@
+{
+  "name": "PredLeague",
+  "description": "Competitive World Cup 2026 Spirit predictions, penalties, and real-time leaderboards with local persistence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

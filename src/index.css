@@ -1,0 +1,94 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700;800;900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Theme and brand colors (FIFA World Cup 2026 Spirit: Arena Pitch Green, Energetic Blue, Trophy Gold) */
+  --color-brand-primary: #00F06A;
+  --color-brand-secondary: #0088FF;
+  --color-brand-background: #02090F;
+  --color-brand-surface: #0A1622;
+  --color-brand-surface-card: #102133;
+  --color-brand-surface-low: #040D17;
+  --color-brand-surface-high: #162E48;
+  --color-brand-surface-highest: #204165;
+
+  /* Status Colors */
+  --color-status-not-lose: #00F06A;
+  --color-status-lose-half: #FFD200;
+  --color-status-lose: #FF265B;
+  --color-status-lose-double: #D2153D;
+  --color-text-muted: #8AA0B5;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-brand-background);
+  color: #f5f5f5;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(0, 240, 106, 0.08) 0%, transparent 60%),
+    radial-gradient(circle at 10% 30%, rgba(0, 136, 255, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 90% 80%, rgba(255, 210, 0, 0.05) 0%, transparent 50%);
+}
+
+/* Custom Scrollbars to fit Minimalist Printing theme */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-brand-surface-low);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #162E48;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-brand-primary);
+}
+
+/* Editorial Brutalist thin border & high contrast alignments */
+.glass-card {
+  background: #0A1622;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-panel {
+  background: #102133;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Accent highlight glow effects */
+.active-tab-glow {
+  box-shadow: 0 0 15px rgba(0, 240, 106, 0.2);
+}
+
+/* Active Prediction Button Shadows */
+.active-predict-glow {
+  box-shadow: 0 0 15px rgba(0, 240, 106, 0.25);
+}
+
+/* Highlight user border and glows */
+.user-highlight {
+  border: 1px solid var(--color-brand-primary);
+  background: rgba(0, 240, 106, 0.04);
+}
+
+/* Architecture lines and structural frames */
+.grid-line-vertical {
+  width: 1px;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.grid-line-horizontal {
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
