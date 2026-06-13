@@ -43,12 +43,15 @@ const EMPTY_PLAYER: Player = {
 function buildDefaultHomePredictions(
   players: Player[],
   matches: Match[],
-  existingPredictions: Prediction[]
+  existingPredictions: Prediction[],
+  options: { includeFinished?: boolean } = {}
 ) {
   const defaults: Prediction[] = [];
-  const openMatches = matches.filter((match) => match.status !== 'FINISHED');
+  const eligibleMatches = options.includeFinished
+    ? matches
+    : matches.filter((match) => match.status !== 'FINISHED');
 
-  openMatches.forEach((match) => {
+  eligibleMatches.forEach((match) => {
     players.forEach((player) => {
       const alreadyPredicted = existingPredictions.some(
         (prediction) => prediction.matchId === match.id && prediction.playerId === player.id
@@ -443,10 +446,16 @@ export default function App() {
     };
 
     const nextPlayers = [...players, newPlayer].sort((a, b) => a.name.localeCompare(b.name));
-    const defaultPredictions = buildDefaultHomePredictions([newPlayer], matches, predictions);
+    const defaultPredictions = buildDefaultHomePredictions([newPlayer], matches, predictions, { includeFinished: true });
+    const nextPredictions = [...predictions, ...defaultPredictions];
+    const newSettlements = buildSettlementsForFinishedMatches(matches, defaultPredictions);
+
     setPlayers(nextPlayers);
     if (defaultPredictions.length > 0) {
-      setPredictions((prevPredictions) => [...prevPredictions, ...defaultPredictions]);
+      setPredictions(nextPredictions);
+    }
+    if (newSettlements.length > 0) {
+      setSettlements((prevSettlements) => [...prevSettlements, ...newSettlements]);
     }
 
     const syncNewPlayer = async () => {
@@ -456,8 +465,20 @@ export default function App() {
       if (defaultPredictions.length > 0) {
         await Promise.all(defaultPredictions.map((prediction) => upsertPredictionToSupabase(prediction)));
       }
+
+      const latestPredictions = await fetchPredictionsFromSupabase();
+      const newPlayerSettlements = buildSettlementsForFinishedMatches(
+        matches,
+        latestPredictions.filter((prediction) => prediction.playerId === newPlayer.id),
+        { requirePredictionId: true }
+      );
+      if (newPlayerSettlements.length > 0) {
+        await upsertSettlementsToSupabase(newPlayerSettlements);
+      }
+
       setPlayers(await fetchPlayersFromSupabase());
-      setPredictions(await fetchPredictionsFromSupabase());
+      setPredictions(latestPredictions);
+      setSettlements(await fetchSettlementsFromSupabase());
     };
 
     syncNewPlayer().catch((error) => {
