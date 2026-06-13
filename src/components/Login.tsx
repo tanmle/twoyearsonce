@@ -10,7 +10,12 @@ interface LoginProps {
 
 export default function Login({ players, isLoading, onLogin }: LoginProps) {
   const [name, setName] = useState('');
+  const [pin, setPin] = useState('');
   const [error, setError] = useState('');
+
+  const matchedPlayer = players.find((candidate) => candidate.name.toLowerCase() === name.trim().toLowerCase());
+  const requiresAdminPin = matchedPlayer?.role === 'admin';
+  const adminPin = import.meta.env.VITE_ADMIN_PIN || '2026';
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -22,7 +27,13 @@ export default function Login({ players, isLoading, onLogin }: LoginProps) {
       return;
     }
 
+    if (player.role === 'admin' && pin.trim() !== adminPin) {
+      setError('PIN quản trị viên không đúng.');
+      return;
+    }
+
     setError('');
+    setPin('');
     onLogin(player);
   };
 
@@ -38,7 +49,7 @@ export default function Login({ players, isLoading, onLogin }: LoginProps) {
             vào kèo
           </h1>
           <p className="text-[10px] text-text-muted font-mono uppercase tracking-widest leading-relaxed">
-            Nhập tên người chơi để đăng nhập. Quản trị viên có quyền đồng bộ kèo chấp thủ công.
+            Nhập tên người chơi để đăng nhập. Quản trị viên cần nhập thêm PIN.
           </p>
         </div>
 
@@ -55,6 +66,23 @@ export default function Login({ players, isLoading, onLogin }: LoginProps) {
               className="w-full bg-[#040D17] border border-white/10 rounded-none px-4 py-3 text-sm text-white focus:outline-none focus:border-brand-primary placeholder:text-text-muted/50"
             />
           </div>
+
+          {requiresAdminPin && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-mono text-text-muted uppercase tracking-widest font-bold">
+                PIN quản trị viên
+              </label>
+              <input
+                value={pin}
+                onChange={(event) => setPin(event.target.value)}
+                placeholder="PIN admin"
+                disabled={isLoading}
+                type="password"
+                inputMode="numeric"
+                className="w-full bg-[#040D17] border border-white/10 rounded-none px-4 py-3 text-sm text-white focus:outline-none focus:border-brand-primary placeholder:text-text-muted/50"
+              />
+            </div>
+          )}
 
           {error && (
             <p className="text-[10px] font-mono uppercase tracking-widest text-status-lose leading-relaxed">
@@ -79,7 +107,11 @@ export default function Login({ players, isLoading, onLogin }: LoginProps) {
             {players.map((player) => (
               <button
                 key={player.id}
-                onClick={() => setName(player.name)}
+                onClick={() => {
+                  setName(player.name);
+                  setPin('');
+                  setError('');
+                }}
                 className="border border-white/10 bg-[#040D17] hover:border-brand-primary text-text-muted hover:text-brand-primary px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest"
               >
                 {player.name}{player.role === 'admin' ? ' • admin' : ''}
