@@ -33,6 +33,8 @@ export default function MatchDetails({
   // Filter a nice list of participants details
   const participantsList = matchPredictions.map((pred) => {
     const player = players.find((p) => p.id === pred.playerId);
+    const settlement = match.status === 'FINISHED' ? settlePrediction(match, pred) : null;
+
     return {
       playerId: pred.playerId,
       name: player ? player.name : 'Người chơi không rõ',
@@ -40,6 +42,8 @@ export default function MatchDetails({
       choice: pred.choice,
       timestamp: pred.timestamp,
       hopeStar: pred.hopeStar,
+      settlementStatus: settlement?.status ?? 'SETTLE_PENDING',
+      penaltyVnd: settlement?.penaltyVnd ?? 0,
     };
   });
 
@@ -184,12 +188,25 @@ export default function MatchDetails({
             <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
               {participantsList.map((predict, index) => {
                 const isCurrentUserRow = predict.playerId === currentPlayer.id;
+                const isLoser = isFinished && predict.settlementStatus !== 'WIN' && predict.settlementStatus !== 'SETTLE_PENDING';
+                const resultLabel =
+                  predict.settlementStatus === 'WIN'
+                    ? 'KHÔNG THUA'
+                    : predict.settlementStatus === 'LOSE_DOUBLE'
+                    ? 'THUA ĐÔI'
+                    : predict.settlementStatus === 'LOSE_HALF'
+                    ? 'THUA NỬA'
+                    : predict.settlementStatus === 'LOSE'
+                    ? 'THUA'
+                    : 'CHƯA TÍNH';
                 
                 return (
                   <div
                     key={predict.playerId || index}
                     className={`flex items-center justify-between p-4 rounded-none border transition-all ${
-                       isCurrentUserRow
+                       isLoser
+                        ? 'border-status-lose/50 bg-status-lose/10'
+                        : isCurrentUserRow
                         ? 'border-brand-primary bg-brand-primary/5'
                         : 'border-white/5 bg-[#040D17] hover:border-white/20'
                     }`}
@@ -223,11 +240,16 @@ export default function MatchDetails({
                         <div className="font-mono text-[8px] text-text-muted uppercase tracking-widest font-bold">
                           {isFinished ? 'TRẠNG THÁI' : 'CHỜ'}
                         </div>
-                        <div className={`font-mono text-[10px] font-bold ${
-                          isFinished ? 'text-status-not-lose uppercase' : 'text-brand-primary'
+                        <div className={`font-mono text-[10px] font-bold uppercase ${
+                          isLoser ? 'text-status-lose' : isFinished ? 'text-status-not-lose' : 'text-brand-primary'
                         }`}>
-                          {isFinished ? 'ĐÃ TÍNH' : 'ĐÃ KHÓA'}
+                          {isFinished ? resultLabel : 'ĐÃ KHÓA'}
                         </div>
+                        {isLoser && (
+                          <div className="font-mono text-[8px] text-status-lose uppercase tracking-widest mt-0.5">
+                            {predict.penaltyVnd.toLocaleString('vi-VN')} VND
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

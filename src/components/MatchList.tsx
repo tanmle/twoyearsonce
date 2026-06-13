@@ -1,9 +1,38 @@
 import { useState, FormEvent } from 'react';
 import { Player, Match, Prediction } from '../types';
-import { Search, Calendar, Lock, AlertTriangle, Sparkles, Check, Star } from 'lucide-react';
+import { Search, Calendar, Lock, AlertTriangle, Check, Star } from 'lucide-react';
 import { formatHandicap, parseHandicapInput } from '../domain/handicap';
 import { sortMatchesForFixtures } from '../domain/matches';
 import { isPredictionLocked } from '../domain/predictionLock';
+
+const getVietnamDateKey = (date: Date) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+
+  return `${year}-${month}-${day}`;
+};
+
+const isTodayOrTomorrowInVietnam = (match: Match) => {
+  if (!match.kickoffAt) return false;
+
+  const kickoff = new Date(match.kickoffAt);
+  if (Number.isNaN(kickoff.getTime())) return false;
+
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const kickoffKey = getVietnamDateKey(kickoff);
+  return kickoffKey === getVietnamDateKey(now) || kickoffKey === getVietnamDateKey(tomorrow);
+};
 
 interface MatchListProps {
   currentPlayer: Player;
@@ -11,13 +40,11 @@ interface MatchListProps {
   players: Player[];
   matches: Match[];
   predictions: Prediction[];
-  onSelectPredictionPlayer: (playerId: string) => void;
   onTogglePrediction: (matchId: string, choice: 'HOME' | 'AWAY') => void;
   onToggleHopeStar: (matchId: string) => void;
+  onOverridePredictions: (matchId: string, playerIds: string[], choice: 'HOME' | 'AWAY') => void;
   onOpenMatchDetails: (match: Match) => void;
-  onUpdateMatchStatus: (matchId: string, status: 'FINISHED', homeGoals: number, awayGoals: number) => void;
   onUpdateMatchHandicap: (matchId: string, handicap: number) => void;
-  onResetMatches: () => void;
 }
 
 export default function MatchList({
@@ -26,22 +53,14 @@ export default function MatchList({
   players,
   matches,
   predictions,
-  onSelectPredictionPlayer,
   onTogglePrediction,
   onToggleHopeStar,
+  onOverridePredictions,
   onOpenMatchDetails,
-  onUpdateMatchStatus,
   onUpdateMatchHandicap,
-  onResetMatches,
 }: MatchListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'UPCOMING' | 'FINISHED' | 'ALL'>('UPCOMING');
-  const [showSandbox, setShowSandbox] = useState(false);
-
-  // Score simulator state
-  const [sandboxMatchId, setSandboxMatchId] = useState('');
-  const [sandboxHomeGoals, setSandboxHomeGoals] = useState(2);
-  const [sandboxAwayGoals, setSandboxAwayGoals] = useState(1);
 
   // Filter matches based on search term and selected status filter
   const filteredMatches = sortMatchesForFixtures(matches.filter((match) => {
@@ -72,17 +91,6 @@ export default function MatchList({
     }
   };
 
-  // Handle simulation trigger
-  const handleSimulate = (e: FormEvent) => {
-    e.preventDefault();
-    if (!sandboxMatchId) return;
-    onUpdateMatchStatus(sandboxMatchId, 'FINISHED', sandboxHomeGoals, sandboxAwayGoals);
-    // Reset sandbox selection
-    setSandboxMatchId('');
-  };
-
-  // Find non-finished matches for score simulation
-  const openMatchesForSim = sortMatchesForFixtures(matches.filter((m) => m.status !== 'FINISHED'));
 
   return (
     <div className="space-y-8 font-sans">
@@ -101,100 +109,8 @@ export default function MatchList({
             </p>
           </div>
 
-          {currentPlayer.role === 'admin' && (
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <select
-                value={predictionPlayer.id}
-                onChange={(event) => onSelectPredictionPlayer(event.target.value)}
-                className="bg-[#102133] border border-white/10 rounded-none px-3 py-2.5 text-xs text-white focus:outline-none focus:border-brand-primary uppercase tracking-wider"
-              >
-                {players.map((player) => (
-                  <option key={player.id} value={player.id} className="bg-[#102133]">
-                    Đặt kèo cho {player.name}
-                  </option>
-                ))}
-              </select>
-              {/* Simulation trigger */}
-              <button
-                onClick={() => setShowSandbox(!showSandbox)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-none border border-brand-primary text-brand-primary text-[10px] font-mono font-bold hover:bg-brand-primary hover:text-black transition-all cursor-pointer uppercase tracking-widest"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Mô phỏng kết quả
-              </button>
-            </div>
-          )}
         </div>
 
-        {/* Dynamic Sandbox Simulator UI block */}
-        {currentPlayer.role === 'admin' && showSandbox && (
-          <div className="p-5 rounded-none border border-brand-primary/20 bg-[#0A1622] space-y-4">
-            <div className="flex items-center justify-between border-b border-white/5 pb-2">
-              <span className="font-mono text-[10px] font-bold text-brand-primary uppercase tracking-widest flex items-center gap-2 animate-pulse">
-                <Sparkles className="w-4 h-4" />
-                FIFA STADIUM SIMULATOR
-              </span>
-              <button 
-                onClick={onResetMatches}
-                className="text-[9px] font-mono text-status-lose uppercase tracking-widest hover:underline"
-              >
-                Xóa dữ liệu cục bộ
-              </button>
-            </div>
-            {openMatchesForSim.length === 0 ? (
-              <p className="text-xs text-text-muted italic">
-                Tất cả các trận đấu hiện tại đã kết thúc! Bạn có thể Xóa dữ liệu cục bộ để mô phỏng lại.
-              </p>
-            ) : (
-              <form onSubmit={handleSimulate} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                <div className="space-y-1">
-                  <label className="text-[9px] font-mono text-text-muted uppercase tracking-widest">Trận đấu:</label>
-                  <select
-                    value={sandboxMatchId}
-                    onChange={(e) => setSandboxMatchId(e.target.value)}
-                    required
-                    className="w-full bg-[#102133] border border-white/10 rounded-none p-2.5 text-xs text-white focus:outline-none focus:border-brand-primary cursor-pointer uppercase tracking-wide"
-                  >
-                    <option value="" className="bg-[#102133]">-- Chọn trận đấu --</option>
-                    {openMatchesForSim.map((m) => (
-                      <option key={m.id} value={m.id} className="bg-[#102133]">
-                        {m.homeTeam} vs {m.awayTeam} (Kèo {formatHandicap(m.handicap)})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[9px] font-mono text-text-muted uppercase tracking-widest">Bàn Chủ nhà:</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10"
-                    value={sandboxHomeGoals}
-                    onChange={(e) => setSandboxHomeGoals(parseInt(e.target.value) || 0)}
-                    className="w-full bg-[#102133] border border-white/10 rounded-none p-2.5 text-xs text-white focus:outline-none focus:border-brand-primary"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[9px] font-mono text-text-muted uppercase tracking-widest">Bàn Đội khách:</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="10"
-                    value={sandboxAwayGoals}
-                    onChange={(e) => setSandboxAwayGoals(parseInt(e.target.value) || 0)}
-                    className="w-full bg-[#102133] border border-white/10 rounded-none p-2.5 text-xs text-white focus:outline-none focus:border-brand-primary"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="w-full bg-brand-primary text-black font-sans uppercase tracking-widest font-bold text-xs py-3 rounded-none cursor-pointer hover:bg-white transition-all transform hover:-translate-y-0.5"
-                >
-                  Hoàn tất & Tính điểm
-                </button>
-              </form>
-            )}
-          </div>
-        )}
 
         <div className="flex flex-col sm:flex-row gap-4">
           {/* Search Input block */}
@@ -261,7 +177,16 @@ export default function MatchList({
               (p) => p.playerId === predictionPlayer.id && p.matchId === match.id
             );
             const predictionLocked = isPredictionLocked(match);
-
+            const matchPredictions = predictions.filter((prediction) => prediction.matchId === match.id);
+            const getPlayerPrediction = (playerId: string) =>
+              matchPredictions.find((prediction) => prediction.playerId === playerId);
+            const getPlayerChoice = (playerId: string): 'HOME' | 'AWAY' => getPlayerPrediction(playerId)?.choice ?? 'HOME';
+            const playersByChoice = (choice: 'HOME' | 'AWAY') =>
+              players.filter((player) => getPlayerChoice(player.id) === choice);
+            const shouldShowSelectionGroups =
+              match.status === 'FINISHED' || match.status === 'LIVE' || isTodayOrTomorrowInVietnam(match);
+            const showPredictionSummary = currentPlayer.role !== 'admin' && shouldShowSelectionGroups;
+            const showAdminQuickEditor = currentPlayer.role === 'admin' && shouldShowSelectionGroups;
             return (
               <div
                 key={match.id}
@@ -445,18 +370,103 @@ export default function MatchList({
                     </div>
                   )}
 
+                  {showAdminQuickEditor && (
+                    <div className="space-y-3 bg-[#040D17] border border-yellow-400/20 p-3 rounded-none">
+                      <div>
+                        <div className="text-[9px] text-yellow-300 font-mono uppercase tracking-widest font-bold mb-1">
+                          Sửa nhanh lựa chọn
+                        </div>
+                        <p className="text-[8px] text-text-muted font-mono uppercase tracking-widest">
+                          Bấm dấu × trên tag để chuyển người chơi sang đội còn lại
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[10px] font-mono">
+                        {(['HOME', 'AWAY'] as const).map((choice) => {
+                          const teamName = choice === 'HOME' ? match.homeTeam : match.awayTeam;
+                          const targetChoice = choice === 'HOME' ? 'AWAY' : 'HOME';
+                          const targetTeamName = targetChoice === 'HOME' ? match.homeTeam : match.awayTeam;
+                          const choicePlayers = playersByChoice(choice);
+
+                          return (
+                            <div key={choice} className="bg-[#07111C] border border-white/5 p-3 rounded-none min-h-24">
+                              <div className="text-brand-primary uppercase tracking-widest font-bold mb-2 truncate">
+                                {teamName}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {choicePlayers.map((player) => {
+                                  const playerPrediction = getPlayerPrediction(player.id);
+
+                                  return (
+                                    <button
+                                      key={player.id}
+                                      type="button"
+                                      title={`Chuyển ${player.name} sang ${targetTeamName}`}
+                                      onClick={() => onOverridePredictions(match.id, [player.id], targetChoice)}
+                                      className="group/tag inline-flex items-center gap-1.5 border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-white hover:border-yellow-300 hover:text-yellow-300 transition-colors"
+                                    >
+                                      <span>{player.name}{playerPrediction?.hopeStar ? ' ⭐' : ''}</span>
+                                      <span className="text-text-muted group-hover/tag:text-yellow-300 font-bold">×</span>
+                                    </button>
+                                  );
+                                })}
+                                {choicePlayers.length === 0 && (
+                                  <span className="text-text-muted italic">Chưa ai chọn</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {match.status === 'FINISHED' && (
-                    <div className="bg-[#040D17] border border-white/5 rounded-none p-3.5 flex justify-between items-center select-none text-xs font-mono">
-                      <span className="text-text-muted flex items-center gap-1.5 uppercase tracking-widest font-bold">
-                        <Lock className="w-3.5 h-3.5" /> DỰ ĐOÁN ĐÃ KHOÁ:
-                      </span>
-                      <span className="font-bold text-brand-primary uppercase tracking-widest">
-                        {hasPredicted
-                          ? hasPredicted.choice === 'HOME'
-                            ? `Chủ nhà (${match.homeTeam})`
-                            : `Đội khách (${match.awayTeam})`
-                          : 'Không tham gia'}
-                      </span>
+                    <div className="space-y-3">
+                      <div className="bg-[#040D17] border border-white/5 rounded-none p-3.5 flex justify-between items-center select-none text-xs font-mono">
+                        <span className="text-text-muted flex items-center gap-1.5 uppercase tracking-widest font-bold">
+                          <Lock className="w-3.5 h-3.5" /> DỰ ĐOÁN ĐÃ KHOÁ:
+                        </span>
+                        <span className="font-bold text-brand-primary uppercase tracking-widest">
+                          {hasPredicted
+                            ? hasPredicted.choice === 'HOME'
+                              ? `Chủ nhà (${match.homeTeam})`
+                              : `Đội khách (${match.awayTeam})`
+                            : 'Không tham gia'}
+                        </span>
+                      </div>
+
+                    </div>
+                  )}
+
+                  {showPredictionSummary && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[10px] font-mono">
+                      <div className="bg-[#040D17] border border-white/5 p-3 rounded-none">
+                        <div className="text-brand-primary uppercase tracking-widest font-bold mb-2 truncate">
+                          Chọn {match.homeTeam}
+                        </div>
+                        <div className="text-text-muted leading-relaxed">
+                          {playersByChoice('HOME').length > 0
+                            ? playersByChoice('HOME').map((player) => {
+                                const playerPrediction = getPlayerPrediction(player.id);
+                                return `${player.name}${playerPrediction?.hopeStar ? ' ⭐' : ''}`;
+                              }).join(', ')
+                            : 'Chưa ai chọn'}
+                        </div>
+                      </div>
+                      <div className="bg-[#040D17] border border-white/5 p-3 rounded-none">
+                        <div className="text-brand-primary uppercase tracking-widest font-bold mb-2 truncate">
+                          Chọn {match.awayTeam}
+                        </div>
+                        <div className="text-text-muted leading-relaxed">
+                          {playersByChoice('AWAY').length > 0
+                            ? playersByChoice('AWAY').map((player) => {
+                                const playerPrediction = getPlayerPrediction(player.id);
+                                return `${player.name}${playerPrediction?.hopeStar ? ' ⭐' : ''}`;
+                              }).join(', ')
+                            : 'Chưa ai chọn'}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

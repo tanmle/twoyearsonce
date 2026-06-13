@@ -11,7 +11,6 @@ interface DashboardProps {
   matches: Match[];
   predictions: Prediction[];
   activities: ActivityFeedItem[];
-  onSelectPredictionPlayer: (playerId: string) => void;
   onTogglePrediction: (matchId: string, choice: 'HOME' | 'AWAY') => void;
   onToggleHopeStar: (matchId: string) => void;
   onOpenMatchDetails: (match: Match) => void;
@@ -26,7 +25,6 @@ export default function Dashboard({
   matches,
   predictions,
   activities,
-  onSelectPredictionPlayer,
   onTogglePrediction,
   onToggleHopeStar,
   onOpenMatchDetails,
@@ -79,24 +77,6 @@ export default function Dashboard({
           <p className="text-xs text-text-muted mt-2 font-mono uppercase tracking-widest">
             Sổ kèo BeerCup • World Cup 2026
           </p>
-          {currentPlayer.role === 'admin' && (
-            <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-2">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-text-muted font-bold">
-                Đặt kèo cho
-              </span>
-              <select
-                value={predictionPlayer.id}
-                onChange={(event) => onSelectPredictionPlayer(event.target.value)}
-                className="bg-[#102133] border border-white/10 rounded-none px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-primary uppercase tracking-wider"
-              >
-                {players.map((player) => (
-                  <option key={player.id} value={player.id} className="bg-[#102133]">
-                    {player.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
         {currentPlayer.role === 'admin' && (
           <button
@@ -122,7 +102,7 @@ export default function Dashboard({
           {/* Stats Summary Section */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Rank Card */}
-            <div className="bg-[#0A1622] border border-white/10 p-5 rounded-none flex flex-col justify-between hover:border-brand-primary/50 transition-all duration-300 group">
+            {/* <div className="bg-[#0A1622] border border-white/10 p-5 rounded-none flex flex-col justify-between hover:border-brand-primary/50 transition-all duration-300 group">
               <div className="flex justify-between items-start">
                 <div className="p-2 bg-brand-primary/10 text-brand-primary rounded-none">
                   <Trophy className="w-4.5 h-4.5" />
@@ -139,10 +119,10 @@ export default function Dashboard({
                   #{currentRank} <span className="text-[10px] font-mono not-italic tracking-normal text-text-muted">/ {players.length}</span>
                 </p>
               </div>
-            </div>
+            </div> */}
 
             {/* Penalty Card */}
-            <div className="bg-[#0A1622] border border-white/10 p-5 rounded-none flex flex-col justify-between hover:border-status-lose/50 transition-all duration-300 group">
+            {/* <div className="bg-[#0A1622] border border-white/10 p-5 rounded-none flex flex-col justify-between hover:border-status-lose/50 transition-all duration-300 group">
               <div className="flex justify-between items-start">
                 <div className="p-2 bg-status-lose/10 text-status-lose rounded-none">
                   <Coins className="w-4.5 h-4.5" />
@@ -160,10 +140,10 @@ export default function Dashboard({
                   <span className="text-[10px] font-mono ml-1 text-text-muted uppercase tracking-widest font-bold"> VND</span>
                 </p>
               </div>
-            </div>
+            </div> */}
 
             {/* Predictions Card */}
-            <div className="bg-[#0A1622] border border-white/10 p-5 rounded-none flex flex-col justify-between hover:border-white/30 transition-all duration-300 group">
+            {/* <div className="bg-[#0A1622] border border-white/10 p-5 rounded-none flex flex-col justify-between hover:border-white/30 transition-all duration-300 group">
               <div className="flex justify-between items-start">
                 <div className="p-2 bg-white/5 text-white rounded-none">
                   <CheckSquare className="w-4.5 h-4.5" />
@@ -180,7 +160,7 @@ export default function Dashboard({
                   {predictionsCount} <span className="text-[10px] font-mono not-italic tracking-normal text-text-muted">lượt</span>
                 </p>
               </div>
-            </div>
+            </div> */}
           </div>
 
           {/* Matches List (Today/Tomorrow or Next Big Matches) */}
@@ -314,12 +294,6 @@ export default function Dashboard({
                         </button>
                       )}
 
-                      {predictionLocked && match.status !== 'FINISHED' && (
-                        <div className="text-center text-[9px] font-mono text-text-muted uppercase tracking-widest border-t border-white/5 pt-3">
-                          Đã khóa lựa chọn trước giờ bóng lăn 1 tiếng
-                        </div>
-                      )}
-
                       {match.status === 'LIVE' && ((match.homeScorers && match.homeScorers.length > 0) || (match.awayScorers && match.awayScorers.length > 0)) && (
                         <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-3 text-[9px] font-mono text-text-muted">
                           <div className="space-y-1 text-left">
@@ -332,6 +306,12 @@ export default function Dashboard({
                               <div key={scorer} className="truncate">⚽ {scorer}</div>
                             ))}
                           </div>
+                        </div>
+                      )}
+
+                      {predictionLocked && match.status !== 'FINISHED' && (
+                        <div className="text-center text-[9px] font-mono text-text-muted uppercase tracking-widest border-t border-white/5 pt-3">
+                          Đã khóa lựa chọn trước giờ bóng lăn 1 tiếng
                         </div>
                       )}
                     </div>

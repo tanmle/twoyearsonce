@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Player, Match, Prediction, ActivityFeedItem, Settlement } from './types';
 import { fetchWorldCupMatches } from './services/api';
-import { getOutcomeKey, settlePrediction } from './domain/settlement';
+import { settlePrediction } from './domain/settlement';
 import { applyPlayerStats } from './domain/playerStats';
 import { isPredictionLocked } from './domain/predictionLock';
-import { clearBeerCupLocalState, loadJson, LOCAL_STORAGE_KEYS, saveJson } from './storage/localStore';
+import { loadJson, LOCAL_STORAGE_KEYS, saveJson } from './storage/localStore';
 import { isSupabaseConfigured } from './lib/supabase';
 import {
   fetchActivitiesFromSupabase,
@@ -139,7 +139,7 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isLoadingRealData, setIsLoadingRealData] = useState<boolean>(isSupabaseConfigured);
 
-  // Sync to outer localStorage to persist sandbox changes reliably
+  // Keep local fallback state persisted when Supabase is unavailable
   useEffect(() => {
     saveJson(LOCAL_STORAGE_KEYS.players, players);
   }, [players]);
@@ -266,6 +266,71 @@ export default function App() {
     }
   };
 
+  const recalculateFinishedMatchSettlements = async (match: Match, fallbackPredictions: Prediction[]) => {
+    if (match.status !== 'FINISHED') return;
+
+    if (isSupabaseConfigured) {
+      const latestPredictions = await fetchPredictionsFromSupabase();
+      const recalculatedSettlements = buildSettlementsForFinishedMatches([match], latestPredictions, { requirePredictionId: true });
+      await upsertSettlementsToSupabase(recalculatedSettlements);
+      setPredictions(latestPredictions);
+      setSettlements(await fetchSettlementsFromSupabase());
+      return;
+    }
+
+    const recalculatedSettlements = buildSettlementsForFinishedMatches([match], fallbackPredictions);
+    setSettlements((prevSettlements) => [
+      ...prevSettlements.filter((settlement) => settlement.matchId !== match.id),
+      ...recalculatedSettlements,
+    ]);
+  };
+
+  const handleOverridePredictions = (matchId: string, playerIds: string[], choice: 'HOME' | 'AWAY') => {
+    if (currentPlayer.role !== 'admin') {
+      alert('Chỉ quản trị viên mới được sửa lựa chọn đã khóa.');
+      return;
+    }
+
+    const matchItem = matches.find((match) => match.id === matchId);
+    if (!matchItem || playerIds.length === 0) return;
+
+    const updatedPredictions: Prediction[] = playerIds.map((playerId) => {
+      const existingPrediction = predictions.find(
+        (prediction) => prediction.matchId === matchId && prediction.playerId === playerId
+      );
+
+      return {
+        ...existingPrediction,
+        matchId,
+        playerId,
+        choice,
+        timestamp: 'Admin vừa sửa',
+        hopeStar: existingPrediction?.hopeStar ?? false,
+      };
+    });
+
+    const overriddenPlayerIds = new Set(playerIds);
+    const nextPredictions = [
+      ...predictions.filter(
+        (prediction) => !(prediction.matchId === matchId && overriddenPlayerIds.has(prediction.playerId))
+      ),
+      ...updatedPredictions,
+    ];
+
+    setPredictions(nextPredictions);
+
+    const syncOverride = async () => {
+      if (isSupabaseConfigured) {
+        await Promise.all(updatedPredictions.map((prediction) => upsertPredictionToSupabase(prediction)));
+      }
+      await recalculateFinishedMatchSettlements(matchItem, nextPredictions);
+    };
+
+    syncOverride().catch((error) => {
+      console.error('Failed to sync admin prediction override', error);
+    });
+  };
+
   const handleToggleHopeStar = (matchId: string) => {
     const matchItem = matches.find((m) => m.id === matchId);
     if (!matchItem || !predictionPlayer.id) return;
@@ -313,19 +378,6 @@ export default function App() {
     setCurrentTab('dashboard');
   };
 
-  // Handler to reset application statistics
-  const handleResetMatches = () => {
-    clearBeerCupLocalState();
-    
-    setPlayers([]);
-    setCurrentPlayerId('');
-    setPredictionPlayerId('');
-    setMatches([]);
-    setPredictions([]);
-    setActivities([]);
-    setCurrentTab('dashboard');
-    setActiveSelectedMatch(null);
-  };
 
   const handleLogout = () => {
     setCurrentPlayerId('');
@@ -353,6 +405,20 @@ export default function App() {
             ...apiMatch,
             handicap: existingMatch.handicap,
             handicapIsManual: true,
+            oddsUpdatedAt: existingMatch.oddsUpdatedAt,
+          };
+        }
+
+        const shouldPreserveExistingHandicap =
+          existingMatch &&
+          existingMatch.handicap !== 0 &&
+          (apiMatch.handicap === 0 || apiMatch.status === 'FINISHED');
+
+        if (shouldPreserveExistingHandicap) {
+          return {
+            ...apiMatch,
+            handicap: existingMatch.handicap,
+            handicapIsManual: false,
             oddsUpdatedAt: existingMatch.oddsUpdatedAt,
           };
         }
@@ -445,71 +511,28 @@ export default function App() {
     setMatches((prevMatches) => prevMatches.map((match) => (match.id === matchId ? updatedMatch : match)));
 
     if (isSupabaseConfigured) {
-      upsertMatchesToSupabase([updatedMatch]).catch((error) => {
-        console.error('Failed to sync manual handicap override to Supabase', error);
-      });
-    }
-  };
-
-  // Sandbox result calculator. Uses shared settlement rules so the UI and backend can agree.
-  const handleUpdateMatchStatus = (
-    matchId: string,
-    status: 'FINISHED',
-    homeGoals: number,
-    awayGoals: number
-  ) => {
-    const targetMatch = matches.find((m) => m.id === matchId);
-    if (!targetMatch) return;
-
-    const settledMatch: Match = {
-      ...targetMatch,
-      status,
-      homeGoals,
-      awayGoals,
-    };
-
-    setMatches(matches.map((m) => (m.id === matchId ? settledMatch : m)));
-
-    if (isSupabaseConfigured) {
-      upsertMatchesToSupabase([settledMatch])
+      upsertMatchesToSupabase([updatedMatch])
         .then(async () => {
+          if (updatedMatch.status !== 'FINISHED') return;
+
           const latestPredictions = await fetchPredictionsFromSupabase();
-          const newSettlements = buildSettlementsForFinishedMatches([settledMatch], latestPredictions, { requirePredictionId: true });
-          await upsertSettlementsToSupabase(newSettlements);
+          const recalculatedSettlements = buildSettlementsForFinishedMatches([updatedMatch], latestPredictions, { requirePredictionId: true });
+          await upsertSettlementsToSupabase(recalculatedSettlements);
           setPredictions(latestPredictions);
           setSettlements(await fetchSettlementsFromSupabase());
         })
         .catch((error) => {
-          console.error('Failed to sync manual match result settlement to Supabase', error);
+          console.error('Failed to sync manual handicap override to Supabase', error);
         });
-    } else {
-      const newSettlements = buildSettlementsForFinishedMatches([settledMatch], predictions);
+    } else if (updatedMatch.status === 'FINISHED') {
+      const recalculatedSettlements = buildSettlementsForFinishedMatches([updatedMatch], predictions);
       setSettlements((prevSettlements) => [
         ...prevSettlements.filter((settlement) => settlement.matchId !== matchId),
-        ...newSettlements,
+        ...recalculatedSettlements,
       ]);
     }
-
-    const matchPredictions = predictions.filter((p) => p.matchId === matchId);
-
-    const brandNewLogs: ActivityFeedItem[] = matchPredictions.map((pred, i) => {
-      const player = players.find((p) => p.id === pred.playerId);
-      const settlement = settlePrediction(settledMatch, pred);
-      const statusType = settlement.status === 'SETTLE_PENDING' ? 'WIN' : settlement.status;
-
-      return {
-        id: `sim_log_${Date.now()}_${i}`,
-        playerName: player ? player.name : 'Người chơi',
-        actionText: 'nhận kết quả dự đoán',
-        targetText: getOutcomeKey(settlement.status).toUpperCase(),
-        type: 'penalty',
-        statusType,
-        timeAgo: 'VỪA XONG',
-      };
-    });
-
-    setActivities([...brandNewLogs, ...activities]);
   };
+
 
   // Render subviews according to currently selected navigation tab
   const renderTabContent = () => {
@@ -536,7 +559,6 @@ export default function App() {
             matches={matches}
             predictions={predictions}
             activities={activities}
-            onSelectPredictionPlayer={setPredictionPlayerId}
             onTogglePrediction={handleTogglePrediction}
             onToggleHopeStar={handleToggleHopeStar}
             onOpenMatchDetails={setActiveSelectedMatch}
@@ -552,13 +574,11 @@ export default function App() {
             players={playersWithStats}
             matches={matches}
             predictions={predictions}
-            onSelectPredictionPlayer={setPredictionPlayerId}
             onTogglePrediction={handleTogglePrediction}
             onToggleHopeStar={handleToggleHopeStar}
+            onOverridePredictions={handleOverridePredictions}
             onOpenMatchDetails={setActiveSelectedMatch}
-            onUpdateMatchStatus={handleUpdateMatchStatus}
             onUpdateMatchHandicap={handleUpdateMatchHandicap}
-            onResetMatches={handleResetMatches}
           />
         );
       case 'leaderboard':
