@@ -28,6 +28,7 @@ import Leaderboard from './components/Leaderboard';
 import MatchDetails from './components/MatchDetails';
 import IdentitySelector from './components/IdentitySelector';
 import Login from './components/Login';
+import { createFootballerAvatar } from './domain/playerAvatar';
 
 const EMPTY_PLAYER: Player = {
   id: '',
@@ -94,7 +95,7 @@ function createPlayerId(name: string, existingIds: string[]) {
 }
 
 function createDefaultAvatar(name: string) {
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0A1622&color=00F06A&bold=true&format=svg`;
+  return createFootballerAvatar(name);
 }
 
 function persistDefaultPredictions(defaultPredictions: Prediction[]) {
