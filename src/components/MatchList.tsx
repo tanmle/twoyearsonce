@@ -4,6 +4,7 @@ import { Search, Calendar, Lock, AlertTriangle, Check, Star } from 'lucide-react
 import { formatHandicap, parseHandicapInput } from '../domain/handicap';
 import { sortMatchesForFixtures } from '../domain/matches';
 import { isPredictionLocked } from '../domain/predictionLock';
+import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 
 const getVietnamDateKey = (date: Date) => {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -62,12 +63,17 @@ export default function MatchList({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'UPCOMING' | 'FINISHED' | 'ALL'>('UPCOMING');
 
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+
   // Filter matches based on search term and selected status filter
   const filteredMatches = sortMatchesForFixtures(matches.filter((match) => {
-    const matchesSearch =
-      match.homeTeam.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      match.awayTeam.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      match.league.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = !normalizedSearchTerm || [
+      match.homeTeam,
+      match.awayTeam,
+      match.league,
+      match.matchGroup ? `bảng ${match.matchGroup}` : '',
+      match.matchType ?? '',
+    ].some((value) => value.toLowerCase().includes(normalizedSearchTerm));
 
     if (!matchesSearch) return false;
 
@@ -148,7 +154,10 @@ export default function MatchList({
               Đã kết thúc
             </button>
             <button
-              onClick={() => setSelectedFilter('ALL')}
+              onClick={() => {
+                setSelectedFilter('ALL');
+                setSearchTerm('');
+              }}
               className={`px-4 py-2.5 rounded-none text-[10px] font-mono uppercase tracking-wider font-bold transition-all cursor-pointer ${
                 selectedFilter === 'ALL'
                   ? 'bg-brand-primary text-black'
@@ -185,6 +194,11 @@ export default function MatchList({
               players.filter((player) => getPlayerChoice(player.id) === choice);
             const shouldShowSelectionGroups =
               match.status === 'FINISHED' || match.status === 'LIVE' || isTodayOrTomorrowInVietnam(match);
+            const matchHeaderLabel = match.matchGroup
+              ? `BẢNG ${match.matchGroup}`
+              : match.matchType && match.matchType !== 'group'
+              ? match.matchType.toUpperCase()
+              : match.league;
             const showPredictionSummary = currentPlayer.role !== 'admin' && shouldShowSelectionGroups;
             const showAdminQuickEditor = currentPlayer.role === 'admin' && shouldShowSelectionGroups;
             return (
@@ -208,7 +222,7 @@ export default function MatchList({
                     <div className="flex items-center gap-1.5 select-none">
                       <span className="w-1 h-1 bg-brand-primary"></span>
                       <span className="font-mono text-[9px] font-bold text-brand-primary uppercase tracking-widest">
-                        {match.league}
+                        {matchHeaderLabel}
                       </span>
                     </div>
 
@@ -248,9 +262,12 @@ export default function MatchList({
                     >
                       <div className="w-10 h-10 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover/box:border-brand-primary/30">
                         <img
-                          src={match.homeLogo}
+                          src={match.homeLogo || FALLBACK_TEAM_LOGO}
                           alt={match.homeTeam}
                           referrerPolicy="no-referrer"
+                          onError={(event) => {
+                            event.currentTarget.src = FALLBACK_TEAM_LOGO;
+                          }}
                           className="w-8 h-8 object-contain"
                         />
                       </div>
@@ -295,9 +312,12 @@ export default function MatchList({
                       </span>
                       <div className="w-10 h-10 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover/box:border-brand-primary/30">
                         <img
-                          src={match.awayLogo}
+                          src={match.awayLogo || FALLBACK_TEAM_LOGO}
                           alt={match.awayTeam}
                           referrerPolicy="no-referrer"
+                          onError={(event) => {
+                            event.currentTarget.src = FALLBACK_TEAM_LOGO;
+                          }}
                           className="w-8 h-8 object-contain"
                         />
                       </div>

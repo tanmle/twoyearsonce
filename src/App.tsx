@@ -13,6 +13,7 @@ import {
   fetchPredictionsFromSupabase,
   fetchSettlementsFromSupabase,
   insertActivityToSupabase,
+  insertPlayerToSupabase,
   upsertMatchesToSupabase,
   upsertPredictionToSupabase,
   upsertSettlementsToSupabase,
@@ -65,6 +66,29 @@ function buildDefaultHomePredictions(
   });
 
   return defaults;
+}
+
+function createPlayerId(name: string, existingIds: string[]) {
+  const base = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || `player-${Date.now()}`;
+
+  let id = base;
+  let suffix = 2;
+  while (existingIds.includes(id)) {
+    id = `${base}-${suffix}`;
+    suffix += 1;
+  }
+
+  return id;
+}
+
+function createDefaultAvatar(name: string) {
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0A1622&color=00F06A&bold=true&format=svg`;
 }
 
 function persistDefaultPredictions(defaultPredictions: Prediction[]) {
@@ -386,6 +410,61 @@ export default function App() {
     setActiveSelectedMatch(null);
   };
 
+  const handleAddPlayer = (name: string, avatar?: string) => {
+    if (currentPlayer.role !== 'admin') {
+      alert('Chỉ quản trị viên mới được thêm người chơi.');
+      return;
+    }
+
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      alert('Nhập tên người chơi.');
+      return;
+    }
+
+    const alreadyExists = players.some((player) => player.name.toLowerCase() === trimmedName.toLowerCase());
+    if (alreadyExists) {
+      alert('Người chơi này đã tồn tại.');
+      return;
+    }
+
+    const newPlayer: Player = {
+      id: createPlayerId(trimmedName, players.map((player) => player.id)),
+      name: trimmedName,
+      avatar: avatar?.trim() || createDefaultAvatar(trimmedName),
+      totalPredictionsCount: 0,
+      notLoseCount: 0,
+      loseHalfCount: 0,
+      loseCount: 0,
+      loseDoubleCount: 0,
+      totalPenaltyVnd: 0,
+      role: 'player',
+    };
+
+    const nextPlayers = [...players, newPlayer].sort((a, b) => a.name.localeCompare(b.name));
+    const defaultPredictions = buildDefaultHomePredictions([newPlayer], matches, predictions);
+    setPlayers(nextPlayers);
+    if (defaultPredictions.length > 0) {
+      setPredictions((prevPredictions) => [...prevPredictions, ...defaultPredictions]);
+    }
+
+    const syncNewPlayer = async () => {
+      if (!isSupabaseConfigured) return;
+
+      await insertPlayerToSupabase(newPlayer);
+      if (defaultPredictions.length > 0) {
+        await Promise.all(defaultPredictions.map((prediction) => upsertPredictionToSupabase(prediction)));
+      }
+      setPlayers(await fetchPlayersFromSupabase());
+      setPredictions(await fetchPredictionsFromSupabase());
+    };
+
+    syncNewPlayer().catch((error) => {
+      console.error('Failed to add player to Supabase', error);
+      alert('Thêm người chơi thất bại. Kiểm tra quyền ghi bảng players trong Supabase.');
+    });
+  };
+
   // Handler to sync matches from API
   const handleSyncMatches = async () => {
     try {
@@ -596,6 +675,7 @@ export default function App() {
           <IdentitySelector
             currentPlayer={currentPlayer}
             players={playersWithStats}
+            onAddPlayer={handleAddPlayer}
           />
         );
       default:

@@ -1,15 +1,27 @@
+import { FormEvent, useState } from 'react';
 import { Player } from '../types';
-import { UserCheck, ShieldCheck } from 'lucide-react';
+import { UserCheck, ShieldCheck, Plus } from 'lucide-react';
 
 interface IdentitySelectorProps {
   currentPlayer: Player;
   players: Player[];
+  onAddPlayer: (name: string, avatar?: string) => void;
 }
 
 export default function IdentitySelector({
   currentPlayer,
   players,
+  onAddPlayer,
 }: IdentitySelectorProps) {
+  const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerAvatar, setNewPlayerAvatar] = useState('');
+
+  const handleAddPlayer = (event: FormEvent) => {
+    event.preventDefault();
+    onAddPlayer(newPlayerName, newPlayerAvatar || undefined);
+    setNewPlayerName('');
+    setNewPlayerAvatar('');
+  };
   // Sort players by total penalty descending to quickly calculate relative rankings
   const sortedPlayers = [...players].sort((a, b) => a.totalPenaltyVnd - b.totalPenaltyVnd);
 
@@ -28,6 +40,43 @@ export default function IdentitySelector({
           Switch active identity to predict as different players and witness real-time FIFA rank reassignment!
         </p>
       </div>
+
+      <form onSubmit={handleAddPlayer} className="bg-[#0A1622] border border-white/10 rounded-none p-5 space-y-4">
+        <div className="flex items-center gap-2 text-brand-primary">
+          <Plus className="w-4 h-4" />
+          <h3 className="font-display italic font-bold text-lg text-white">thêm người chơi</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_1.5fr_auto] gap-3 items-end">
+          <div className="space-y-1">
+            <label className="text-[9px] font-mono text-text-muted uppercase tracking-widest font-bold">
+              Tên người chơi
+            </label>
+            <input
+              value={newPlayerName}
+              onChange={(event) => setNewPlayerName(event.target.value)}
+              placeholder="VD: Nam"
+              className="w-full bg-[#040D17] border border-white/10 rounded-none px-3 py-2.5 text-xs text-white focus:outline-none focus:border-brand-primary placeholder:text-text-muted/50"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[9px] font-mono text-text-muted uppercase tracking-widest font-bold">
+              Avatar URL (không bắt buộc)
+            </label>
+            <input
+              value={newPlayerAvatar}
+              onChange={(event) => setNewPlayerAvatar(event.target.value)}
+              placeholder="Để trống sẽ tự tạo avatar"
+              className="w-full bg-[#040D17] border border-white/10 rounded-none px-3 py-2.5 text-xs text-white focus:outline-none focus:border-brand-primary placeholder:text-text-muted/50"
+            />
+          </div>
+          <button
+            type="submit"
+            className="bg-brand-primary text-black font-mono text-[10px] font-bold uppercase tracking-widest px-4 py-3 hover:bg-white transition-colors"
+          >
+            Thêm
+          </button>
+        </div>
+      </form>
 
       {/* Grid List of Players Card */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

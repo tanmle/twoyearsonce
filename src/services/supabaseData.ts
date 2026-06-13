@@ -61,6 +61,7 @@ export async function fetchMatchesFromSupabase(): Promise<Match[]> {
     lastSyncedAt: row.last_synced_at ?? undefined,
     oddsUpdatedAt: row.odds_updated_at ?? undefined,
     matchType: row.match_type ?? undefined,
+    matchGroup: row.match_group ?? undefined,
   }));
 }
 
@@ -114,6 +115,18 @@ export async function fetchActivitiesFromSupabase(): Promise<ActivityFeedItem[]>
   }));
 }
 
+export async function insertPlayerToSupabase(player: Player) {
+  const client = requireSupabase();
+  const { error } = await client.from('players').insert({
+    id: player.id,
+    name: player.name,
+    avatar: player.avatar,
+    role: player.role ?? 'player',
+  });
+
+  if (error) throw error;
+}
+
 export async function upsertMatchesToSupabase(matches: Match[]) {
   const client = requireSupabase();
   const { error } = await client.from('matches').upsert(matches.map((match) => ({
@@ -140,6 +153,7 @@ export async function upsertMatchesToSupabase(matches: Match[]) {
     last_synced_at: match.lastSyncedAt,
     odds_updated_at: match.oddsUpdatedAt,
     match_type: match.matchType,
+    match_group: match.matchGroup,
   })));
 
   if (error) throw error;

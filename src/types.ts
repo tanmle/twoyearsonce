@@ -43,6 +43,7 @@ export interface Match {
   lastSyncedAt?: string;
   oddsUpdatedAt?: string;
   matchType?: string;
+  matchGroup?: string;
 }
 
 export type PredictionChoice = 'HOME' | 'AWAY' | null;

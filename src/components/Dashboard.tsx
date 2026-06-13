@@ -3,6 +3,7 @@ import { Trophy, Coins, CheckSquare, Flame, CheckCircle, Activity, Star } from '
 import { formatHandicap } from '../domain/handicap';
 import { sortMatchesForFixtures } from '../domain/matches';
 import { isPredictionLocked } from '../domain/predictionLock';
+import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 
 interface DashboardProps {
   currentPlayer: Player;
@@ -56,6 +57,7 @@ export default function Dashboard({
   // Calculate ranks
   // Ranks are ordered by penalty VND ascending (lowest penalty is better, rank 1, 2, 3...)
   const sortedPlayers = [...players].sort((a, b) => a.totalPenaltyVnd - b.totalPenaltyVnd);
+  const quickRankingPlayers = [...players].sort((a, b) => b.totalPenaltyVnd - a.totalPenaltyVnd);
   const currentRankIndex = sortedPlayers.findIndex((p) => p.id === currentPlayer.id);
   const currentRank = currentRankIndex !== -1 ? currentRankIndex + 1 : 4;
 
@@ -171,6 +173,13 @@ export default function Dashboard({
                   (p) => p.matchId === match.id && p.playerId === predictionPlayer.id
                 );
                 const predictionLocked = isPredictionLocked(match);
+                const matchHeaderLabel = match.status === 'LIVE'
+                  ? (match.liveTimeText || 'TRỰC TIẾP')
+                  : match.matchGroup
+                  ? `BẢNG ${match.matchGroup}`
+                  : match.matchType && match.matchType !== 'group'
+                  ? match.matchType.toUpperCase()
+                  : 'WORLD CUP 2026';
 
                 return (
                   <div key={match.id} className="bg-[#0A1622] border border-white/10 rounded-none overflow-hidden hover:border-white/20 transition-all duration-300">
@@ -178,7 +187,7 @@ export default function Dashboard({
                     <div className="bg-[#102133] border-b border-white/10 p-4 flex justify-between items-center">
                       <span className="font-mono text-[10px] text-brand-primary tracking-widest font-bold flex items-center gap-2">
                         <Flame className="w-3.5 h-3.5 text-brand-primary animate-pulse" />
-                        {match.status === 'LIVE' ? (match.liveTimeText || 'TRỰC TIẾP') : 'TRẬN WORLD CUP 2026'}
+                        {matchHeaderLabel}
                       </span>
                       <span className="font-mono text-[9px] text-text-muted bg-white/5 px-2 py-1 uppercase tracking-widest border border-white/5">
                         {match.time} • {match.date}
@@ -207,9 +216,12 @@ export default function Dashboard({
                         >
                           <div className="w-11 h-11 sm:w-16 sm:h-16 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover:border-brand-primary/40 transition-colors">
                             <img
-                              src={match.homeLogo}
+                              src={match.homeLogo || FALLBACK_TEAM_LOGO}
                               alt={match.homeTeam}
                               referrerPolicy="no-referrer"
+                              onError={(event) => {
+                                event.currentTarget.src = FALLBACK_TEAM_LOGO;
+                              }}
                               className="w-8 h-8 sm:w-12 sm:h-12 object-contain"
                             />
                           </div>
@@ -265,9 +277,12 @@ export default function Dashboard({
                         >
                           <div className="w-11 h-11 sm:w-16 sm:h-16 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover:border-brand-primary/40 transition-colors">
                             <img
-                              src={match.awayLogo}
+                              src={match.awayLogo || FALLBACK_TEAM_LOGO}
                               alt={match.awayTeam}
                               referrerPolicy="no-referrer"
+                              onError={(event) => {
+                                event.currentTarget.src = FALLBACK_TEAM_LOGO;
+                              }}
                               className="w-8 h-8 sm:w-12 sm:h-12 object-contain"
                             />
                           </div>
@@ -340,7 +355,7 @@ export default function Dashboard({
             </div>
 
             <div className="flex flex-col gap-3">
-              {sortedPlayers.slice(0, 3).map((player, idx) => {
+              {quickRankingPlayers.slice(0, 3).map((player, idx) => {
                 const isUser = player.id === currentPlayer.id;
                 
                 return (

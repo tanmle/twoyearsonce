@@ -1,4 +1,5 @@
 import { Match } from '../types';
+import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 
 // We use the open-source worldcup26.ir API which doesn't require an API key
 const API_BASE_URL = 'https://worldcup26.ir/get';
@@ -25,6 +26,7 @@ interface WC26Game {
   finished: string; // "TRUE" or "FALSE"
   time_elapsed: string;
   type: string;
+  group?: string;
 }
 
 interface WC26Stadium {
@@ -238,7 +240,7 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
       const awayTeamName = awayTeamObj ? awayTeamObj.name_en : apiGame.away_team_label || 'TBD';
       
       // Default flag for unknown teams
-      const fallbackLogo = 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/FIFA_World_Cup_2026_Logo.svg/512px-FIFA_World_Cup_2026_Logo.svg.png';
+      const fallbackLogo = FALLBACK_TEAM_LOGO;
       const homeLogo = homeTeamObj ? homeTeamObj.flag : fallbackLogo;
       const awayLogo = awayTeamObj ? awayTeamObj.flag : fallbackLogo;
 
@@ -275,6 +277,7 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
         lastSyncedAt: syncedAt,
         oddsUpdatedAt,
         matchType: apiGame.type,
+        matchGroup: apiGame.group,
       };
     });
 

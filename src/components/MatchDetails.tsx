@@ -2,6 +2,7 @@ import { Player, Match, Prediction } from '../types';
 import { Calendar, CheckCircle2, XCircle, Users, BarChart3, Minimize2, MapPin, Trophy } from 'lucide-react';
 import { formatHandicap } from '../domain/handicap';
 import { settlePrediction } from '../domain/settlement';
+import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 
 interface MatchDetailsProps {
   currentPlayer: Player;
@@ -87,8 +88,11 @@ export default function MatchDetails({
           <div className="flex flex-col items-center md:items-end flex-1 min-w-0 text-center md:text-right">
             <div className="w-11 h-11 sm:w-16 sm:h-16 bg-[#040D17] border border-white/10 rounded-none flex items-center justify-center mb-2 sm:mb-4 p-1">
               <img
-                src={match.homeLogo}
+                src={match.homeLogo || FALLBACK_TEAM_LOGO}
                 alt={match.homeTeam}
+                onError={(event) => {
+                  event.currentTarget.src = FALLBACK_TEAM_LOGO;
+                }}
                 className="w-8 h-8 sm:w-12 sm:h-12 object-contain"
               />
             </div>
@@ -130,8 +134,11 @@ export default function MatchDetails({
           <div className="flex flex-col items-center md:items-start flex-1 min-w-0 text-center md:text-left">
             <div className="w-11 h-11 sm:w-16 sm:h-16 bg-[#040D17] border border-white/10 rounded-none flex items-center justify-center mb-2 sm:mb-4 p-1">
               <img
-                src={match.awayLogo}
+                src={match.awayLogo || FALLBACK_TEAM_LOGO}
                 alt={match.awayTeam}
+                onError={(event) => {
+                  event.currentTarget.src = FALLBACK_TEAM_LOGO;
+                }}
                 className="w-8 h-8 sm:w-12 sm:h-12 object-contain"
               />
             </div>

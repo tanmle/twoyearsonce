@@ -35,7 +35,8 @@ create table if not exists public.matches (
   is_hot boolean not null default false,
   last_synced_at timestamptz not null default now(),
   odds_updated_at timestamptz,
-  match_type text
+  match_type text,
+  match_group text
 );
 
 alter table public.matches
@@ -44,7 +45,8 @@ alter table public.matches
 alter table public.matches
   add column if not exists home_scorers text[] not null default '{}',
   add column if not exists away_scorers text[] not null default '{}',
-  add column if not exists match_type text;
+  add column if not exists match_type text,
+  add column if not exists match_group text;
 
 create table if not exists public.predictions (
   id uuid primary key default gen_random_uuid(),
@@ -95,6 +97,7 @@ drop policy if exists "public read matches" on public.matches;
 drop policy if exists "public read predictions" on public.predictions;
 drop policy if exists "public read settlements" on public.settlements;
 drop policy if exists "public read activities" on public.activities;
+drop policy if exists "public write players" on public.players;
 drop policy if exists "public write matches" on public.matches;
 drop policy if exists "public update matches" on public.matches;
 drop policy if exists "public write predictions" on public.predictions;
@@ -110,6 +113,7 @@ create policy "public read settlements" on public.settlements for select using (
 create policy "public read activities" on public.activities for select using (true);
 
 -- Prototype writes. Tighten once auth/player ownership is implemented.
+create policy "public write players" on public.players for insert with check (true);
 create policy "public write matches" on public.matches for insert with check (true);
 create policy "public update matches" on public.matches for update using (true) with check (true);
 create policy "public write predictions" on public.predictions for insert with check (true);
