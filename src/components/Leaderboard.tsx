@@ -1,17 +1,24 @@
-import { Player } from '../types';
-import { Trophy, Download, TrendingDown } from 'lucide-react';
+import { useState } from 'react';
+import { Match, Player, Prediction } from '../types';
+import { Trophy, Download, TrendingDown, X } from 'lucide-react';
+import { formatHandicap } from '../domain/handicap';
+import { settlePrediction } from '../domain/settlement';
+import { sortMatchesChronologically } from '../domain/matches';
 
 interface LeaderboardProps {
   currentPlayer: Player;
   players: Player[];
-  onSelectPlayer: (player: Player) => void;
+  matches: Match[];
+  predictions: Prediction[];
 }
 
 export default function Leaderboard({
   currentPlayer,
   players,
-  onSelectPlayer,
+  matches,
+  predictions,
 }: LeaderboardProps) {
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   // Ranks are calculated by ordering players by aggregate penalty descending (lowest is Rank 1!)
   const sortedPlayers = [...players].sort((a, b) => a.totalPenaltyVnd - b.totalPenaltyVnd);
 
@@ -19,6 +26,34 @@ export default function Leaderboard({
   const rank1 = sortedPlayers[0];
   const rank2 = sortedPlayers[1];
   const rank3 = sortedPlayers[2];
+
+  const selectedPlayerPredictions = selectedPlayer
+    ? sortMatchesChronologically(
+        matches.filter((match) => predictions.some((prediction) => (
+          prediction.playerId === selectedPlayer.id && prediction.matchId === match.id
+        )))
+      ).map((match) => ({
+        match,
+        prediction: predictions.find((prediction) => prediction.playerId === selectedPlayer.id && prediction.matchId === match.id),
+      }))
+    : [];
+
+  const formatSettlementLabel = (match: Match, prediction?: Prediction) => {
+    if (!prediction || match.status !== 'FINISHED') return 'Chưa tính';
+    const settlement = settlePrediction(match, prediction);
+    switch (settlement.status) {
+      case 'WIN':
+        return 'Không thua';
+      case 'LOSE_HALF':
+        return 'Thua nửa';
+      case 'LOSE':
+        return 'Thua';
+      case 'LOSE_DOUBLE':
+        return 'Thua đôi';
+      case 'SETTLE_PENDING':
+        return 'Chưa tính';
+    }
+  };
 
   // Download Leaderboard action - triggers real CSV file download!
   const triggerDownloadCSV = () => {
@@ -79,7 +114,7 @@ export default function Leaderboard({
         {/* RANK 2 Podium card */}
         {rank2 && (
           <div 
-            onClick={() => onSelectPlayer(rank2)}
+            onClick={() => setSelectedPlayer(rank2)}
             className="bg-[#0A1622] hover:bg-[#102133] border border-white/10 rounded-none p-6 flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer transition-all duration-300 md:order-1"
           >
             <div className="relative mb-4">
@@ -109,7 +144,7 @@ export default function Leaderboard({
         {/* RANK 1 Top Podium card */}
         {rank1 && (
           <div 
-            onClick={() => onSelectPlayer(rank1)}
+            onClick={() => setSelectedPlayer(rank1)}
             className="bg-[#1A180E] hover:bg-[#232012] border-2 border-brand-primary rounded-none p-8 flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer shadow-xl transition-all duration-300 md:scale-105 z-10 md:order-2"
           >
             <div className="relative mb-5">
@@ -145,7 +180,7 @@ export default function Leaderboard({
         {/* RANK 3 Podium card */}
         {rank3 && (
           <div 
-            onClick={() => onSelectPlayer(rank3)}
+            onClick={() => setSelectedPlayer(rank3)}
             className="bg-[#0A1622] hover:bg-[#102133] border border-white/10 rounded-none p-6 flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer transition-all duration-300 hover:scale-[1.02] md:order-3"
           >
             <div className="relative mb-4">
@@ -174,6 +209,94 @@ export default function Leaderboard({
 
       </div>
 
+      {selectedPlayer && (
+        <div className="bg-[#0A1622] border border-brand-primary/30 rounded-none p-5 space-y-4">
+          <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <img
+                src={selectedPlayer.avatar}
+                alt={selectedPlayer.name}
+                referrerPolicy="no-referrer"
+                className="w-12 h-12 rounded-none object-cover border border-brand-primary/40"
+              />
+              <div className="min-w-0">
+                <h3 className="font-display italic text-2xl text-white truncate">
+                  chi tiết kết quả • {selectedPlayer.name}
+                </h3>
+                <p className="text-[10px] text-text-muted font-mono uppercase tracking-widest mt-1">
+                  {selectedPlayer.totalPenaltyVnd.toLocaleString('vi-VN')} VND • {selectedPlayer.totalPredictionsCount} lượt
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedPlayer(null)}
+              className="border border-white/10 text-text-muted hover:text-white hover:border-white/30 p-2 transition-colors"
+              aria-label="Đóng chi tiết người chơi"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {selectedPlayerPredictions.length === 0 ? (
+            <div className="text-center text-xs text-text-muted font-mono uppercase tracking-widest py-8">
+              Chưa có lựa chọn nào.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-[520px] overflow-y-auto pr-1">
+              {selectedPlayerPredictions.map(({ match, prediction }) => {
+                const settlement = prediction ? settlePrediction(match, prediction) : null;
+                const isLoser = match.status === 'FINISHED' && settlement?.status !== 'WIN' && settlement?.status !== 'SETTLE_PENDING';
+                const isWinner = match.status === 'FINISHED' && settlement?.status === 'WIN';
+
+                return (
+                  <div
+                    key={match.id}
+                    className={`border rounded-none p-3 bg-[#040D17] ${
+                      isLoser
+                        ? 'border-status-lose/40 bg-status-lose/10'
+                        : isWinner
+                        ? 'border-status-not-lose/30 bg-status-not-lose/5'
+                        : 'border-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3 text-[9px] font-mono uppercase tracking-widest text-text-muted mb-2">
+                      <span>{match.matchGroup ? `Bảng ${match.matchGroup}` : match.matchType || match.league}</span>
+                      <span>{match.date} • {match.time}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-xs text-white uppercase tracking-wider font-bold truncate">
+                          {match.homeTeam} vs {match.awayTeam}
+                        </div>
+                        <div className="text-[10px] text-text-muted font-mono uppercase tracking-widest mt-1">
+                          Chọn: {prediction?.choice === 'AWAY' ? match.awayTeam : match.homeTeam}{prediction?.hopeStar ? ' ⭐' : ''} • Kèo {formatHandicap(match.handicap)}
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className={`text-[10px] font-mono font-bold uppercase tracking-widest ${
+                          isLoser ? 'text-status-lose' : isWinner ? 'text-status-not-lose' : 'text-brand-primary'
+                        }`}>
+                          {formatSettlementLabel(match, prediction)}
+                        </div>
+                        <div className="text-[9px] text-text-muted font-mono mt-1">
+                          {match.status === 'FINISHED' ? `${match.homeGoals} - ${match.awayGoals}` : match.status === 'LIVE' ? 'Đang đá' : 'Sắp đá'}
+                        </div>
+                        {match.status === 'FINISHED' && settlement && (
+                          <div className={`text-[9px] font-mono font-bold mt-1 ${settlement.penaltyVnd > 0 ? 'text-status-lose' : 'text-status-not-lose'}`}>
+                            {settlement.penaltyVnd.toLocaleString('vi-VN')} VND
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Leaderboard */}
       <div className="bg-[#0A1622] border border-white/10 rounded-none overflow-hidden">
         <div className="overflow-x-auto">
@@ -199,7 +322,7 @@ export default function Leaderboard({
                 return (
                   <tr
                     key={player.id}
-                    onClick={() => onSelectPlayer(player)}
+                    onClick={() => setSelectedPlayer(player)}
                     className={`cursor-pointer transition-all duration-150 select-none ${
                       isUser
                         ? 'bg-brand-primary/5 border-l-2 border-brand-primary'

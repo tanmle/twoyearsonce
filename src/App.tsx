@@ -713,7 +713,8 @@ export default function App() {
           <Leaderboard
             currentPlayer={currentPlayer}
             players={playersWithStats}
-            onSelectPlayer={handleSelectPlayer}
+            matches={matches}
+            predictions={predictions}
           />
         );
       case 'profile':
