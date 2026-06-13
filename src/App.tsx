@@ -734,6 +734,7 @@ export default function App() {
             players={playersWithStats}
             matches={scopedMatches}
             predictions={scopedPredictions}
+            settlements={scopedSettlements}
           />
         );
       case 'profile':
