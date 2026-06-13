@@ -18,9 +18,21 @@ interface WC26Game {
   away_team_label: string;
   home_score: string;
   away_score: string;
-  local_date: string; // M/D/YYYY HH:mm
+  home_scorers: string;
+  away_scorers: string;
+  local_date: string; // M/D/YYYY HH:mm in stadium local time
+  stadium_id: string;
   finished: string; // "TRUE" or "FALSE"
   time_elapsed: string;
+  type: string;
+}
+
+interface WC26Stadium {
+  id: string;
+  name_en: string;
+  city_en: string;
+  country_en: string;
+  region: string;
 }
 
 // Aliases to map worldcup26.ir names to Odds API names
@@ -36,13 +48,105 @@ const normalizeName = (name: string) => {
   return TEAM_ALIASES[clean] || clean;
 };
 
+const VIETNAM_TIME_ZONE = 'Asia/Bangkok';
+
+function getStadiumTimeZone(stadium?: WC26Stadium) {
+  if (!stadium) return 'UTC';
+
+  const city = stadium.city_en.toLowerCase();
+  const country = stadium.country_en.toLowerCase();
+
+  if (city.includes('vancouver')) return 'America/Vancouver';
+  if (city.includes('seattle') || city.includes('los angeles') || city.includes('san francisco')) return 'America/Los_Angeles';
+  if (city.includes('toronto')) return 'America/Toronto';
+  if (
+    city.includes('atlanta') ||
+    city.includes('miami') ||
+    city.includes('boston') ||
+    city.includes('philadelphia') ||
+    city.includes('new york') ||
+    city.includes('new jersey')
+  ) return 'America/New_York';
+  if (city.includes('dallas') || city.includes('houston') || city.includes('kansas city')) return 'America/Chicago';
+  if (country.includes('mexico')) return 'America/Mexico_City';
+
+  return 'UTC';
+}
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const asUtc = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second)
+  );
+
+  return asUtc - date.getTime();
+}
+
+function parseApiDateInTimeZone(rawDate: string, timeZone: string) {
+  const match = rawDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
+  if (!match) return new Date(rawDate);
+
+  const [, month, day, year, hour, minute] = match;
+  const localAsUtc = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+  let utcDate = new Date(localAsUtc - getTimeZoneOffsetMs(new Date(localAsUtc), timeZone));
+  utcDate = new Date(localAsUtc - getTimeZoneOffsetMs(utcDate, timeZone));
+
+  return utcDate;
+}
+
+function formatDateGmt7(date: Date) {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: VIETNAM_TIME_ZONE,
+  }).format(date);
+}
+
+function formatTimeGmt7(date: Date) {
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: VIETNAM_TIME_ZONE,
+  }).format(date);
+}
+
+function parseScorers(raw: string | null | undefined): string[] {
+  if (!raw || raw === 'null') return [];
+
+  return raw
+    .replace(/^\{/, '')
+    .replace(/\}$/, '')
+    .split(/","|",|,"/)
+    .map((scorer) => scorer.replace(/^"|"$/g, '').trim())
+    .filter(Boolean);
+}
+
 export async function fetchWorldCupMatches(): Promise<Match[]> {
   try {
     // 1. Fetch Teams to map IDs to Names/Logos
     const teamsPromise = fetch(`${API_BASE_URL}/teams`).then(r => r.json());
     
-    // 2. Fetch Games
+    // 2. Fetch Games and Stadiums
     const gamesPromise = fetch(`${API_BASE_URL}/games`).then(r => r.json());
+    const stadiumsPromise = fetch(`${API_BASE_URL}/stadiums`).then(r => r.json());
 
     // 3. Fetch Odds (if API key is available)
     let oddsPromise = Promise.resolve(null);
@@ -57,7 +161,7 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
     }
 
     // Await all fetches concurrently
-    const [teamsData, gamesData, oddsData] = await Promise.all([teamsPromise, gamesPromise, oddsPromise]);
+    const [teamsData, gamesData, stadiumsData, oddsData] = await Promise.all([teamsPromise, gamesPromise, stadiumsPromise, oddsPromise]);
 
     // Parse Teams
     const teamsList: WC26Team[] = teamsData.teams || [];
@@ -66,8 +170,13 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
       teamMap.set(team.id, team);
     });
 
-    // Parse Games
+    // Parse Games and Stadiums
     const gamesList: WC26Game[] = gamesData.games || [];
+    const stadiumsList: WC26Stadium[] = stadiumsData.stadiums || [];
+    const stadiumMap = new Map<string, WC26Stadium>();
+    stadiumsList.forEach((stadium) => {
+      stadiumMap.set(stadium.id, stadium);
+    });
 
     // Parse Odds and map them by match
     const oddsMap = new Map<string, number>();
@@ -98,16 +207,16 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
 
     // 4. Map to our Match interface
     const matches: Match[] = gamesList.map(apiGame => {
-      // Parse dates (Format: "M/D/YYYY HH:mm")
-      let fixtureDate = new Date(apiGame.local_date);
+      const stadium = stadiumMap.get(apiGame.stadium_id);
+      const stadiumTimeZone = getStadiumTimeZone(stadium);
+
+      // Parse API dates as stadium-local time and display them in Vietnam time (GMT+7).
+      let fixtureDate = parseApiDateInTimeZone(apiGame.local_date, stadiumTimeZone);
       
       // Fallback if parsing fails
       if (isNaN(fixtureDate.getTime())) {
         fixtureDate = new Date();
       }
-
-      // Parse timePart separately for display
-      const [_, timePart] = apiGame.local_date ? apiGame.local_date.split(' ') : ['', ''];
 
       const isFinished = apiGame.finished === "TRUE" || apiGame.time_elapsed === "finished";
       const isLive = !isFinished && apiGame.time_elapsed !== "notstarted";
@@ -117,12 +226,9 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
       if (isLive) status = 'LIVE';
       if (isFinished) status = 'FINISHED';
 
-      // Format date like "11 Jun, 2026"
-      const dateOptions: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
-      const formattedDate = fixtureDate.toLocaleDateString('en-GB', dateOptions);
-
-      // Format time like "15:00"
-      const formattedTime = timePart || 'TBD';
+      // Format date/time in GMT+7.
+      const formattedDate = formatDateGmt7(fixtureDate);
+      const formattedTime = formatTimeGmt7(fixtureDate);
 
       // Resolve teams (Handle TBD "0" case)
       const homeTeamObj = teamMap.get(apiGame.home_team_id);
@@ -136,9 +242,11 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
       const homeLogo = homeTeamObj ? homeTeamObj.flag : fallbackLogo;
       const awayLogo = awayTeamObj ? awayTeamObj.flag : fallbackLogo;
 
-      // Parse scores
+      // Parse scores and scorers
       const homeGoals = apiGame.home_score && apiGame.home_score !== "null" ? parseInt(apiGame.home_score, 10) : undefined;
       const awayGoals = apiGame.away_score && apiGame.away_score !== "null" ? parseInt(apiGame.away_score, 10) : undefined;
+      const homeScorers = parseScorers(apiGame.home_scorers);
+      const awayScorers = parseScorers(apiGame.away_scorers);
 
       // Resolve handicap by cross-referencing oddsMap
       const matchKey = `${normalizeName(homeTeamName)}_${normalizeName(awayTeamName)}`;
@@ -156,14 +264,17 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
         time: status === 'FINISHED' ? 'FINISHED' : formattedTime,
         date: formattedDate,
         kickoffAt: fixtureDate.toISOString(),
-        stadium: 'Sân ' + apiGame.id, // Simplify stadium for now
+        stadium: stadium?.name_en || 'Sân ' + apiGame.id,
         status: status,
         homeGoals: isNaN(homeGoals as any) ? undefined : homeGoals,
         awayGoals: isNaN(awayGoals as any) ? undefined : awayGoals,
+        homeScorers,
+        awayScorers,
         liveTimeText: isLive ? `TRỰC TIẾP ${apiGame.time_elapsed}'` : undefined,
         isHot: status === 'LIVE' || status === 'UPCOMING',
         lastSyncedAt: syncedAt,
         oddsUpdatedAt,
+        matchType: apiGame.type,
       };
     });
 

@@ -1,7 +1,9 @@
 import { useState, FormEvent } from 'react';
 import { Player, Match, Prediction } from '../types';
-import { Search, Calendar, Lock, AlertTriangle, Sparkles, Check } from 'lucide-react';
+import { Search, Calendar, Lock, AlertTriangle, Sparkles, Check, Star } from 'lucide-react';
+import { formatHandicap, parseHandicapInput } from '../domain/handicap';
 import { sortMatchesForFixtures } from '../domain/matches';
+import { isPredictionLocked } from '../domain/predictionLock';
 
 interface MatchListProps {
   currentPlayer: Player;
@@ -11,8 +13,10 @@ interface MatchListProps {
   predictions: Prediction[];
   onSelectPredictionPlayer: (playerId: string) => void;
   onTogglePrediction: (matchId: string, choice: 'HOME' | 'AWAY') => void;
+  onToggleHopeStar: (matchId: string) => void;
   onOpenMatchDetails: (match: Match) => void;
   onUpdateMatchStatus: (matchId: string, status: 'FINISHED', homeGoals: number, awayGoals: number) => void;
+  onUpdateMatchHandicap: (matchId: string, handicap: number) => void;
   onResetMatches: () => void;
 }
 
@@ -24,8 +28,10 @@ export default function MatchList({
   predictions,
   onSelectPredictionPlayer,
   onTogglePrediction,
+  onToggleHopeStar,
   onOpenMatchDetails,
   onUpdateMatchStatus,
+  onUpdateMatchHandicap,
   onResetMatches,
 }: MatchListProps) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -53,6 +59,18 @@ export default function MatchList({
     }
     return true; // ALL
   }));
+
+  const handleHandicapOverride = (e: FormEvent<HTMLFormElement>, matchId: string) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const rawValue = String(formData.get('handicap') ?? '');
+
+    try {
+      onUpdateMatchHandicap(matchId, parseHandicapInput(rawValue));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Handicap không hợp lệ');
+    }
+  };
 
   // Handle simulation trigger
   const handleSimulate = (e: FormEvent) => {
@@ -140,7 +158,7 @@ export default function MatchList({
                     <option value="" className="bg-[#102133]">-- Chọn trận đấu --</option>
                     {openMatchesForSim.map((m) => (
                       <option key={m.id} value={m.id} className="bg-[#102133]">
-                        {m.homeTeam} vs {m.awayTeam} (HDP {m.handicap})
+                        {m.homeTeam} vs {m.awayTeam} (Kèo {formatHandicap(m.handicap)})
                       </option>
                     ))}
                   </select>
@@ -242,6 +260,7 @@ export default function MatchList({
             const hasPredicted = predictions.find(
               (p) => p.playerId === predictionPlayer.id && p.matchId === match.id
             );
+            const predictionLocked = isPredictionLocked(match);
 
             return (
               <div
@@ -254,7 +273,7 @@ export default function MatchList({
                 {match.status === 'LIVE' && (
                   <div className="absolute top-0 right-0 py-1 px-3 bg-[#e53935] text-white flex items-center gap-1.5 leading-none">
                     <span className="w-1.5 h-1.5 bg-white animate-pulse"></span>
-                    <span className="font-mono text-[9px] font-bold tracking-wider">TRỰC TIẾP {match.liveTimeText || "67'"}</span>
+                    <span className="font-mono text-[9px] font-bold tracking-wider">{match.liveTimeText || 'TRỰC TIẾP'}</span>
                   </div>
                 )}
 
@@ -289,7 +308,19 @@ export default function MatchList({
                     className="flex justify-between items-center bg-[#040D17] p-3 border border-white/5 hover:border-brand-primary/20 transition-all cursor-pointer group/box mt-3"
                   >
                     {/* Chủ nhà Side */}
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onTogglePrediction(match.id, 'HOME');
+                      }}
+                      disabled={predictionLocked}
+                      className={`flex items-center gap-3 flex-1 min-w-0 p-2 border transition-all text-left ${
+                        hasPredicted?.choice === 'HOME'
+                          ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
+                          : 'border-transparent text-white hover:border-brand-primary/40 hover:bg-white/5'
+                      } ${predictionLocked ? 'cursor-default opacity-80' : 'cursor-pointer'}`}
+                    >
                       <div className="w-10 h-10 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover/box:border-brand-primary/30">
                         <img
                           src={match.homeLogo}
@@ -298,10 +329,11 @@ export default function MatchList({
                           className="w-8 h-8 object-contain"
                         />
                       </div>
-                      <span className="font-sans uppercase tracking-wider font-bold text-xs text-white truncate group-hover/box:text-brand-primary transition-colors">
+                      <span className="font-sans uppercase tracking-wider font-bold text-xs text-current truncate transition-colors flex items-center gap-1">
+                        {hasPredicted?.choice === 'HOME' && <Check className="w-3.5 h-3.5 text-brand-primary flex-shrink-0" />}
                         {match.homeTeam}
                       </span>
-                    </div>
+                    </button>
 
                     {/* VS score indicator columns */}
                     <div className="flex flex-col items-center justify-center px-4">
@@ -319,8 +351,21 @@ export default function MatchList({
                     </div>
 
                     {/* Đội khách Side */}
-                    <div className="flex items-center justify-end gap-3 flex-1 text-right min-w-0">
-                      <span className="font-sans uppercase tracking-wider font-bold text-xs text-white truncate group-hover/box:text-brand-primary transition-colors">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onTogglePrediction(match.id, 'AWAY');
+                      }}
+                      disabled={predictionLocked}
+                      className={`flex items-center justify-end gap-3 flex-1 text-right min-w-0 p-2 border transition-all ${
+                        hasPredicted?.choice === 'AWAY'
+                          ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
+                          : 'border-transparent text-white hover:border-brand-primary/40 hover:bg-white/5'
+                      } ${predictionLocked ? 'cursor-default opacity-80' : 'cursor-pointer'}`}
+                    >
+                      <span className="font-sans uppercase tracking-wider font-bold text-xs text-current truncate transition-colors flex items-center gap-1">
+                        {hasPredicted?.choice === 'AWAY' && <Check className="w-3.5 h-3.5 text-brand-primary flex-shrink-0" />}
                         {match.awayTeam}
                       </span>
                       <div className="w-10 h-10 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover/box:border-brand-primary/30">
@@ -331,59 +376,76 @@ export default function MatchList({
                           className="w-8 h-8 object-contain"
                         />
                       </div>
-                    </div>
+                    </button>
                   </div>
+
+                  {((match.homeScorers && match.homeScorers.length > 0) || (match.awayScorers && match.awayScorers.length > 0)) && (
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-[9px] font-mono text-text-muted">
+                      <div className="space-y-1 text-left">
+                        {match.homeScorers?.map((scorer) => (
+                          <div key={scorer} className="truncate">⚽ {scorer}</div>
+                        ))}
+                      </div>
+                      <div className="space-y-1 text-right">
+                        {match.awayScorers?.map((scorer) => (
+                          <div key={scorer} className="truncate">⚽ {scorer}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Handicap badge & Chủ nhà / Đội khách buttons */}
                 <div className="mt-5 pt-4 border-t border-white/5 space-y-4">
-                  <div className="flex justify-between items-center text-xs font-mono">
+                  <div className="flex justify-between items-center gap-3 text-xs font-mono">
                     <span className="text-[10px] text-text-muted uppercase tracking-widest font-bold">
                       kèo chấp:
                     </span>
                     <span className="bg-brand-primary/10 text-brand-primary px-3 py-0.5 text-[9px] uppercase tracking-widest font-bold border border-brand-primary/20 select-none">
-                      Kèo {match.handicap > 0 ? `+${match.handicap}` : match.handicap}
+                      Kèo {formatHandicap(match.handicap)}
                     </span>
                   </div>
 
-                  {match.status === 'UPCOMING' || match.status === 'LIVE' ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        onClick={() => onTogglePrediction(match.id, 'HOME')}
-                        className={`flex flex-col items-center justify-center py-3 px-3 rounded-none border font-bold transition-all cursor-pointer group ${
-                          hasPredicted?.choice === 'HOME'
-                            ? 'border-brand-primary bg-brand-primary/5 text-brand-primary'
-                            : 'border-white/10 bg-[#040D17] hover:bg-[#102133] hover:border-brand-primary/60 text-text-muted hover:text-white'
-                        }`}
-                      >
-                        <span className="text-[8px] uppercase font-mono tracking-widest">
-                          CHỌN CỬA
-                        </span>
-                        <span className="text-sm font-sans font-extrabold mt-1 tracking-wider flex items-center gap-1">
-                          {hasPredicted?.choice === 'HOME' && <Check className="w-3.5 h-3.5 text-brand-primary" />}
-                          {match.homeTeam}
-                        </span>
-                      </button>
+                  {match.matchType && match.matchType !== 'group' && !predictionLocked && (
+                    <button
+                      type="button"
+                      onClick={() => onToggleHopeStar(match.id)}
+                      className={`w-full flex items-center justify-center gap-2 px-3 py-2 border font-mono text-[9px] font-bold uppercase tracking-widest transition-all ${
+                        hasPredicted?.hopeStar
+                          ? 'border-yellow-400 bg-yellow-400/10 text-yellow-300'
+                          : 'border-white/10 text-text-muted hover:border-yellow-400/60 hover:text-yellow-300'
+                      }`}
+                    >
+                      <Star className={`w-3.5 h-3.5 ${hasPredicted?.hopeStar ? 'fill-yellow-300' : ''}`} />
+                      Ngôi sao hy vọng
+                    </button>
+                  )}
 
+                  {currentPlayer.role === 'admin' && (
+                    <form onSubmit={(event) => handleHandicapOverride(event, match.id)} className="grid grid-cols-[1fr_auto] gap-2">
+                      <input
+                        name="handicap"
+                        defaultValue={formatHandicap(match.handicap)}
+                        aria-label="Ghi đè handicap"
+                        placeholder="0:3/4"
+                        className="bg-[#102133] border border-white/10 rounded-none px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-primary font-mono"
+                      />
                       <button
-                        onClick={() => onTogglePrediction(match.id, 'AWAY')}
-                        className={`flex flex-col items-center justify-center py-3 px-3 rounded-none border font-bold transition-all cursor-pointer group ${
-                          hasPredicted?.choice === 'AWAY'
-                            ? 'border-brand-primary bg-brand-primary/5 text-brand-primary'
-                            : 'border-white/10 bg-[#040D17] hover:bg-[#102133] hover:border-brand-primary/60 text-text-muted hover:text-white'
-                        }`}
+                        type="submit"
+                        className="px-3 py-2 bg-brand-primary text-black font-mono text-[9px] font-bold uppercase tracking-widest hover:bg-white transition-colors"
                       >
-                        <span className="text-[8px] uppercase font-mono tracking-widest">
-                          CHỌN CỬA
-                        </span>
-                        <span className="text-sm font-sans font-extrabold mt-1 tracking-wider flex items-center gap-1">
-                          {hasPredicted?.choice === 'AWAY' && <Check className="w-3.5 h-3.5 text-brand-primary" />}
-                          {match.awayTeam}
-                        </span>
+                        Lưu kèo
                       </button>
+                    </form>
+                  )}
+
+                  {predictionLocked && match.status !== 'FINISHED' && (
+                    <div className="bg-[#040D17] border border-white/5 rounded-none p-3.5 text-center select-none text-[9px] text-text-muted font-mono uppercase tracking-widest">
+                      Đã khóa lựa chọn trước giờ bóng lăn 1 tiếng
                     </div>
-                  ) : (
-                    /* Display locked prediction outcome details */
+                  )}
+
+                  {match.status === 'FINISHED' && (
                     <div className="bg-[#040D17] border border-white/5 rounded-none p-3.5 flex justify-between items-center select-none text-xs font-mono">
                       <span className="text-text-muted flex items-center gap-1.5 uppercase tracking-widest font-bold">
                         <Lock className="w-3.5 h-3.5" /> DỰ ĐOÁN ĐÃ KHOÁ:

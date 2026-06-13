@@ -21,6 +21,7 @@ create table if not exists public.matches (
   home_logo text not null,
   away_logo text not null,
   handicap numeric not null default 0,
+  handicap_is_manual boolean not null default false,
   kickoff_at timestamptz,
   display_time text not null,
   display_date text not null,
@@ -28,21 +29,36 @@ create table if not exists public.matches (
   status text not null check (status in ('UPCOMING', 'LIVE', 'FINISHED')),
   home_goals integer,
   away_goals integer,
+  home_scorers text[] not null default '{}',
+  away_scorers text[] not null default '{}',
   live_time_text text,
   is_hot boolean not null default false,
   last_synced_at timestamptz not null default now(),
-  odds_updated_at timestamptz
+  odds_updated_at timestamptz,
+  match_type text
 );
+
+alter table public.matches
+  add column if not exists handicap_is_manual boolean not null default false;
+
+alter table public.matches
+  add column if not exists home_scorers text[] not null default '{}',
+  add column if not exists away_scorers text[] not null default '{}',
+  add column if not exists match_type text;
 
 create table if not exists public.predictions (
   id uuid primary key default gen_random_uuid(),
   match_id text not null references public.matches(id) on delete cascade,
   player_id text not null references public.players(id) on delete cascade,
   choice text not null check (choice in ('HOME', 'AWAY')),
+  hope_star boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (match_id, player_id)
 );
+
+alter table public.predictions
+  add column if not exists hope_star boolean not null default false;
 
 create table if not exists public.settlements (
   id uuid primary key default gen_random_uuid(),
@@ -83,6 +99,8 @@ drop policy if exists "public write matches" on public.matches;
 drop policy if exists "public update matches" on public.matches;
 drop policy if exists "public write predictions" on public.predictions;
 drop policy if exists "public update predictions" on public.predictions;
+drop policy if exists "public write settlements" on public.settlements;
+drop policy if exists "public update settlements" on public.settlements;
 drop policy if exists "public write activities" on public.activities;
 
 create policy "public read players" on public.players for select using (true);
@@ -96,4 +114,6 @@ create policy "public write matches" on public.matches for insert with check (tr
 create policy "public update matches" on public.matches for update using (true) with check (true);
 create policy "public write predictions" on public.predictions for insert with check (true);
 create policy "public update predictions" on public.predictions for update using (true) with check (true);
+create policy "public write settlements" on public.settlements for insert with check (true);
+create policy "public update settlements" on public.settlements for update using (true) with check (true);
 create policy "public write activities" on public.activities for insert with check (true);

@@ -1,5 +1,6 @@
 import { Player, Match, Prediction } from '../types';
 import { Calendar, CheckCircle2, XCircle, Users, BarChart3, Minimize2, MapPin, Trophy } from 'lucide-react';
+import { formatHandicap } from '../domain/handicap';
 import { settlePrediction } from '../domain/settlement';
 
 interface MatchDetailsProps {
@@ -38,6 +39,7 @@ export default function MatchDetails({
       avatar: player ? player.avatar : '',
       choice: pred.choice,
       timestamp: pred.timestamp,
+      hopeStar: pred.hopeStar,
     };
   });
 
@@ -74,20 +76,27 @@ export default function MatchDetails({
       </div>
 
       {/* Match Score info Header cards */}
-      <section className="relative overflow-hidden rounded-none border border-white/10 bg-[#0A1622] p-8">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-8 relative z-10">
+      <section className="relative overflow-hidden rounded-none border border-white/10 bg-[#0A1622] p-4 sm:p-8">
+        <div className="flex flex-row justify-between items-center gap-3 sm:gap-8 relative z-10">
           
           {/* Chủ nhà team */}
-          <div className="flex flex-col items-center md:items-end flex-1 text-center md:text-right">
-            <div className="w-16 h-16 bg-[#040D17] border border-white/10 rounded-none flex items-center justify-center mb-4 p-1">
+          <div className="flex flex-col items-center md:items-end flex-1 min-w-0 text-center md:text-right">
+            <div className="w-11 h-11 sm:w-16 sm:h-16 bg-[#040D17] border border-white/10 rounded-none flex items-center justify-center mb-2 sm:mb-4 p-1">
               <img
                 src={match.homeLogo}
                 alt={match.homeTeam}
-                className="w-12 h-12 object-contain"
+                className="w-8 h-8 sm:w-12 sm:h-12 object-contain"
               />
             </div>
-            <h2 className="font-sans font-black text-xl text-white uppercase tracking-wider">{match.homeTeam}</h2>
-            <span className="text-[8px] font-mono text-text-muted mt-1 uppercase tracking-widest font-bold select-none">CHỦ NHÀ</span>
+            <h2 className="font-sans font-black text-[11px] sm:text-xl text-white uppercase tracking-wider truncate max-w-full">{match.homeTeam}</h2>
+            <span className="hidden sm:block text-[8px] font-mono text-text-muted mt-1 uppercase tracking-widest font-bold select-none">CHỦ NHÀ</span>
+            {match.homeScorers && match.homeScorers.length > 0 && (
+              <div className="mt-2 space-y-1 text-[9px] font-mono text-brand-primary text-center md:text-right">
+                {match.homeScorers.map((scorer) => (
+                  <div key={scorer}>⚽ {scorer}</div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Scores indicator */}
@@ -109,21 +118,28 @@ export default function MatchDetails({
             </div>
 
             <div className="font-mono text-[10px] text-brand-primary bg-brand-primary/10 px-3.5 py-1 rounded-none mt-2 border border-brand-primary/20 select-none tracking-widest font-bold">
-              KÈO CHẤP: {match.handicap > 0 ? `+${match.handicap}` : match.handicap}
+              KÈO CHẤP: {formatHandicap(match.handicap)}
             </div>
           </div>
 
           {/* Đội khách Team */}
-          <div className="flex flex-col items-center md:items-start flex-1 text-center md:text-left">
-            <div className="w-16 h-16 bg-[#040D17] border border-white/10 rounded-none flex items-center justify-center mb-4 p-1">
+          <div className="flex flex-col items-center md:items-start flex-1 min-w-0 text-center md:text-left">
+            <div className="w-11 h-11 sm:w-16 sm:h-16 bg-[#040D17] border border-white/10 rounded-none flex items-center justify-center mb-2 sm:mb-4 p-1">
               <img
                 src={match.awayLogo}
                 alt={match.awayTeam}
-                className="w-12 h-12 object-contain"
+                className="w-8 h-8 sm:w-12 sm:h-12 object-contain"
               />
             </div>
-            <h2 className="font-sans font-black text-xl text-white uppercase tracking-wider">{match.awayTeam}</h2>
-            <span className="text-[8px] font-mono text-text-muted mt-1 uppercase tracking-widest font-bold select-none">ĐỘI KHÁCH</span>
+            <h2 className="font-sans font-black text-[11px] sm:text-xl text-white uppercase tracking-wider truncate max-w-full">{match.awayTeam}</h2>
+            <span className="hidden sm:block text-[8px] font-mono text-text-muted mt-1 uppercase tracking-widest font-bold select-none">ĐỘI KHÁCH</span>
+            {match.awayScorers && match.awayScorers.length > 0 && (
+              <div className="mt-2 space-y-1 text-[9px] font-mono text-brand-primary text-center md:text-left">
+                {match.awayScorers.map((scorer) => (
+                  <div key={scorer}>⚽ {scorer}</div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>
@@ -200,7 +216,7 @@ export default function MatchDetails({
                           ? 'bg-brand-primary/5 text-brand-primary border-brand-primary/45'
                           : 'bg-white/5 text-white border-white/20'
                       }`}>
-                        {predict.choice === 'HOME' ? 'CHỦ NHÀ' : 'ĐỘI KHÁCH'}
+                        {predict.choice === 'HOME' ? 'CHỦ NHÀ' : 'ĐỘI KHÁCH'}{predict.hopeStar ? ' ⭐' : ''}
                       </span>
                       
                       <div className="text-right min-w-[70px]">
@@ -306,7 +322,7 @@ export default function MatchDetails({
                       : 'THUA'}
                   </div>
                   <p className="text-[9px] text-text-muted font-mono tracking-widest uppercase mt-1">
-                    Lựa chọn: {currentUserPred.choice === 'HOME' ? 'Chủ nhà' : 'Đội khách'}
+                    Lựa chọn: {currentUserPred.choice === 'HOME' ? 'Chủ nhà' : 'Đội khách'}{currentUserPred.hopeStar ? ' ⭐ Ngôi sao hy vọng' : ''}
                   </p>
                 </div>
 

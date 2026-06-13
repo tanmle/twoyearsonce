@@ -1,6 +1,8 @@
 import { Player, Match, Prediction, ActivityFeedItem } from '../types';
-import { Trophy, Coins, CheckSquare, Flame, CheckCircle, HelpCircle, Activity } from 'lucide-react';
-import { sortMatchesChronologically } from '../domain/matches';
+import { Trophy, Coins, CheckSquare, Flame, CheckCircle, Activity, Star } from 'lucide-react';
+import { formatHandicap } from '../domain/handicap';
+import { sortMatchesForFixtures } from '../domain/matches';
+import { isPredictionLocked } from '../domain/predictionLock';
 
 interface DashboardProps {
   currentPlayer: Player;
@@ -11,6 +13,7 @@ interface DashboardProps {
   activities: ActivityFeedItem[];
   onSelectPredictionPlayer: (playerId: string) => void;
   onTogglePrediction: (matchId: string, choice: 'HOME' | 'AWAY') => void;
+  onToggleHopeStar: (matchId: string) => void;
   onOpenMatchDetails: (match: Match) => void;
   onSyncMatches: () => void;
   isSyncing: boolean;
@@ -25,23 +28,32 @@ export default function Dashboard({
   activities,
   onSelectPredictionPlayer,
   onTogglePrediction,
+  onToggleHopeStar,
   onOpenMatchDetails,
   onSyncMatches,
   isSyncing,
 }: DashboardProps) {
-  // Find matches for today and tomorrow
+  // Show live matches first, then today/tomorrow, otherwise the next open matches.
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dayAfterTomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
 
-  const upcomingMatches = sortMatchesChronologically(matches.filter(m => {
-    const d = new Date(m.date);
-    return m.status !== 'FINISHED' && d >= todayStart && d < dayAfterTomorrowStart;
-  }));
+  const getMatchDate = (match: Match) => {
+    const value = match.kickoffAt ? new Date(match.kickoffAt) : new Date(match.date);
+    return Number.isNaN(value.getTime()) ? null : value;
+  };
 
-  const displayMatches = upcomingMatches.length > 0
-    ? upcomingMatches
-    : sortMatchesChronologically(matches.filter(m => m.status !== 'FINISHED')).slice(0, 3);
+  const liveMatches = matches.filter((match) => match.status === 'LIVE');
+  const todayAndTomorrowMatches = matches.filter((match) => {
+    if (match.status === 'FINISHED' || match.status === 'LIVE') return false;
+    const matchDate = getMatchDate(match);
+    return matchDate !== null && matchDate >= todayStart && matchDate < dayAfterTomorrowStart;
+  });
+
+  const spotlightMatches = sortMatchesForFixtures([...liveMatches, ...todayAndTomorrowMatches]);
+  const displayMatches = spotlightMatches.length > 0
+    ? spotlightMatches
+    : sortMatchesForFixtures(matches.filter((match) => match.status !== 'FINISHED')).slice(0, 3);
 
   // Calculate ranks
   // Ranks are ordered by penalty VND ascending (lowest penalty is better, rank 1, 2, 3...)
@@ -178,6 +190,7 @@ export default function Dashboard({
                 const matchPrediction = predictions.find(
                   (p) => p.matchId === match.id && p.playerId === predictionPlayer.id
                 );
+                const predictionLocked = isPredictionLocked(match);
 
                 return (
                   <div key={match.id} className="bg-[#0A1622] border border-white/10 rounded-none overflow-hidden hover:border-white/20 transition-all duration-300">
@@ -185,7 +198,7 @@ export default function Dashboard({
                     <div className="bg-[#102133] border-b border-white/10 p-4 flex justify-between items-center">
                       <span className="font-mono text-[10px] text-brand-primary tracking-widest font-bold flex items-center gap-2">
                         <Flame className="w-3.5 h-3.5 text-brand-primary animate-pulse" />
-                        TRẬN WORLD CUP 2026
+                        {match.status === 'LIVE' ? (match.liveTimeText || 'TRỰC TIẾP') : 'TRẬN WORLD CUP 2026'}
                       </span>
                       <span className="font-mono text-[9px] text-text-muted bg-white/5 px-2 py-1 uppercase tracking-widest border border-white/5">
                         {match.time} • {match.date}
@@ -193,95 +206,134 @@ export default function Dashboard({
                     </div>
 
                     {/* Scoreboard Body */}
-                    <div className="p-6 flex flex-col gap-6">
+                    <div className="p-4 sm:p-6 flex flex-col gap-6">
                       <div 
                         onClick={() => onOpenMatchDetails(match)}
-                        className="flex flex-col sm:flex-row justify-around items-center cursor-pointer p-6 border border-white/5 bg-[#0a0a0a] hover:bg-[#151515] hover:border-brand-primary/20 transition-all duration-300 group gap-6"
+                        className="flex flex-row justify-around items-center cursor-pointer p-3 sm:p-6 border border-white/5 bg-[#0a0a0a] hover:bg-[#151515] hover:border-brand-primary/20 transition-all duration-300 group gap-3 sm:gap-6"
                       >
                         {/* Chủ nhà Team */}
-                        <div className="flex flex-col items-center gap-3 flex-1">
-                          <div className="w-16 h-16 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover:border-brand-primary/40 transition-colors">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onTogglePrediction(match.id, 'HOME');
+                          }}
+                          disabled={predictionLocked}
+                          className={`flex flex-col items-center gap-2 sm:gap-3 flex-1 min-w-0 p-2 border transition-all ${
+                            matchPrediction?.choice === 'HOME'
+                              ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
+                              : 'border-transparent hover:border-brand-primary/40 hover:bg-white/5 text-white'
+                          } ${predictionLocked ? 'cursor-default opacity-80' : 'cursor-pointer'}`}
+                        >
+                          <div className="w-11 h-11 sm:w-16 sm:h-16 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover:border-brand-primary/40 transition-colors">
                             <img
                               src={match.homeLogo}
                               alt={match.homeTeam}
                               referrerPolicy="no-referrer"
-                              className="w-12 h-12 object-contain"
+                              className="w-8 h-8 sm:w-12 sm:h-12 object-contain"
                             />
                           </div>
-                          <span className="font-sans uppercase tracking-widest font-bold text-xs text-white text-center truncate w-full group-hover:text-brand-primary transition-colors">
+                          <span className="font-sans uppercase tracking-widest font-bold text-xs text-current text-center truncate w-full transition-colors flex items-center justify-center gap-1">
+                            {matchPrediction?.choice === 'HOME' && <CheckCircle className="w-3.5 h-3.5 text-brand-primary" />}
                             {match.homeTeam}
                           </span>
-                          <span className="text-[8px] font-mono text-text-muted tracking-widest uppercase">ĐỘI CHỦ NHÀ</span>
-                        </div>
+                          <span className="hidden sm:block text-[8px] font-mono text-text-muted tracking-widest uppercase">ĐỘI CHỦ NHÀ</span>
+                        </button>
 
-                        {/* VS & Handicap Information */}
-                        <div className="flex flex-col items-center justify-center min-w-[120px] py-2">
-                          <span className="text-[10px] font-mono tracking-widest text-brand-secondary uppercase font-bold">
-                            KÈO CHẤP
-                          </span>
-                          <span className="font-display italic font-black text-4xl text-white tracking-widest mt-1">
-                            {match.handicap > 0 ? `+${match.handicap}` : match.handicap}
-                          </span>
-                          <p className="text-[9px] text-text-muted font-mono uppercase tracking-widest mt-2 border-b border-white/10 pb-0.5 group-hover:text-brand-primary transition-colors">
+                        {/* VS / Live Score & Handicap Information */}
+                        <div className="flex flex-col items-center justify-center min-w-[76px] sm:min-w-[120px] py-2">
+                          {match.status === 'LIVE' ? (
+                            <>
+                              <span className="text-[9px] font-mono tracking-widest text-status-lose uppercase font-bold animate-pulse">
+                                LIVE
+                              </span>
+                              <span className="font-mono font-black text-2xl sm:text-4xl text-brand-primary tracking-widest mt-1">
+                                {match.homeGoals ?? 0} - {match.awayGoals ?? 0}
+                              </span>
+                              <span className="text-[8px] font-mono tracking-widest text-text-muted uppercase font-bold mt-1">
+                                Kèo {formatHandicap(match.handicap)}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-[10px] font-mono tracking-widest text-brand-secondary uppercase font-bold">
+                                KÈO CHẤP
+                              </span>
+                              <span className="font-display italic font-black text-2xl sm:text-4xl text-white tracking-widest mt-1">
+                                {formatHandicap(match.handicap)}
+                              </span>
+                            </>
+                          )}
+                          <p className="hidden sm:block text-[9px] text-text-muted font-mono uppercase tracking-widest mt-2 border-b border-white/10 pb-0.5 group-hover:text-brand-primary transition-colors">
                             Xem chi tiết trận →
                           </p>
                         </div>
 
                         {/* Đội khách Team */}
-                        <div className="flex flex-col items-center gap-3 flex-1">
-                          <div className="w-16 h-16 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover:border-brand-primary/40 transition-colors">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onTogglePrediction(match.id, 'AWAY');
+                          }}
+                          disabled={predictionLocked}
+                          className={`flex flex-col items-center gap-2 sm:gap-3 flex-1 min-w-0 p-2 border transition-all ${
+                            matchPrediction?.choice === 'AWAY'
+                              ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
+                              : 'border-transparent hover:border-brand-primary/40 hover:bg-white/5 text-white'
+                          } ${predictionLocked ? 'cursor-default opacity-80' : 'cursor-pointer'}`}
+                        >
+                          <div className="w-11 h-11 sm:w-16 sm:h-16 rounded-none bg-white/5 p-1 flex items-center justify-center border border-white/10 group-hover:border-brand-primary/40 transition-colors">
                             <img
                               src={match.awayLogo}
                               alt={match.awayTeam}
                               referrerPolicy="no-referrer"
-                              className="w-12 h-12 object-contain"
+                              className="w-8 h-8 sm:w-12 sm:h-12 object-contain"
                             />
                           </div>
-                          <span className="font-sans uppercase tracking-widest font-bold text-xs text-white text-center truncate w-full group-hover:text-brand-primary transition-colors">
+                          <span className="font-sans uppercase tracking-widest font-bold text-xs text-current text-center truncate w-full transition-colors flex items-center justify-center gap-1">
+                            {matchPrediction?.choice === 'AWAY' && <CheckCircle className="w-3.5 h-3.5 text-brand-primary" />}
                             {match.awayTeam}
                           </span>
-                          <span className="text-[8px] font-mono text-text-muted tracking-widest uppercase">ĐỘI KHÁCH</span>
-                        </div>
+                          <span className="hidden sm:block text-[8px] font-mono text-text-muted tracking-widest uppercase">ĐỘI KHÁCH</span>
+                        </button>
                       </div>
 
-                      {/* Prediction Toggles panel */}
-                      <div className="flex flex-col gap-3 border-t border-white/5 pt-4">
-                        <div className="flex items-center gap-1.5 justify-center sm:justify-start">
-                          <HelpCircle className="w-4 h-4 text-brand-primary" />
-                          <p className="text-[10px] font-mono text-text-muted uppercase tracking-widest font-bold">
-                            GỬI LỰA CHỌN:
-                          </p>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          {/* Pred CHỦ NHÀ */}
-                          <button
-                            onClick={() => onTogglePrediction(match.id, 'HOME')}
-                            className={`flex items-center justify-center gap-2 py-4 rounded-none border font-sans uppercase tracking-widest text-xs transition-all cursor-pointer ${
-                              matchPrediction?.choice === 'HOME'
-                                ? 'border-brand-primary bg-brand-primary/10 text-brand-primary active-predict-glow scale-[1.01]'
-                                : 'border-white/10 hover:border-brand-primary/60 text-text-muted hover:text-white hover:bg-white/5'
-                            }`}
-                          >
-                            {matchPrediction?.choice === 'HOME' && <CheckCircle className="w-3.5 h-3.5 text-brand-primary" />}
-                            <span>Chọn {match.homeTeam}</span>
-                          </button>
+                      {match.matchType && match.matchType !== 'group' && !predictionLocked && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleHopeStar(match.id)}
+                          className={`self-center flex items-center gap-2 px-3 py-2 border font-mono text-[9px] font-bold uppercase tracking-widest transition-all ${
+                            matchPrediction?.hopeStar
+                              ? 'border-yellow-400 bg-yellow-400/10 text-yellow-300'
+                              : 'border-white/10 text-text-muted hover:border-yellow-400/60 hover:text-yellow-300'
+                          }`}
+                        >
+                          <Star className={`w-3.5 h-3.5 ${matchPrediction?.hopeStar ? 'fill-yellow-300' : ''}`} />
+                          Ngôi sao hy vọng
+                        </button>
+                      )}
 
-                          {/* Pred ĐỘI KHÁCH */}
-                          <button
-                            onClick={() => onTogglePrediction(match.id, 'AWAY')}
-                            className={`flex items-center justify-center gap-2 py-4 rounded-none border font-sans uppercase tracking-widest text-xs transition-all cursor-pointer ${
-                              matchPrediction?.choice === 'AWAY'
-                                ? 'border-brand-primary bg-brand-primary/10 text-brand-primary active-predict-glow scale-[1.01]'
-                                : 'border-white/10 hover:border-brand-primary/60 text-text-muted hover:text-white hover:bg-white/5'
-                            }`}
-                          >
-                            {matchPrediction?.choice === 'AWAY' && <CheckCircle className="w-3.5 h-3.5 text-brand-primary" />}
-                            <span>Chọn {match.awayTeam}</span>
-                          </button>
+                      {predictionLocked && match.status !== 'FINISHED' && (
+                        <div className="text-center text-[9px] font-mono text-text-muted uppercase tracking-widest border-t border-white/5 pt-3">
+                          Đã khóa lựa chọn trước giờ bóng lăn 1 tiếng
                         </div>
-                      </div>
+                      )}
 
+                      {match.status === 'LIVE' && ((match.homeScorers && match.homeScorers.length > 0) || (match.awayScorers && match.awayScorers.length > 0)) && (
+                        <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-3 text-[9px] font-mono text-text-muted">
+                          <div className="space-y-1 text-left">
+                            {match.homeScorers?.map((scorer) => (
+                              <div key={scorer} className="truncate">⚽ {scorer}</div>
+                            ))}
+                          </div>
+                          <div className="space-y-1 text-right">
+                            {match.awayScorers?.map((scorer) => (
+                              <div key={scorer} className="truncate">⚽ {scorer}</div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

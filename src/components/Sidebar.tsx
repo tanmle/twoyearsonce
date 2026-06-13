@@ -19,7 +19,7 @@ export default function Sidebar({
     { id: 'dashboard', label: 'Tổng quan', icon: LayoutGrid },
     { id: 'matches', label: 'Lịch đấu & Tỉ số', icon: ListTodo },
     { id: 'leaderboard', label: 'Bảng xếp hạng', icon: Trophy },
-    { id: 'profile', label: 'Tài khoản', icon: Users },
+    ...(currentPlayer.role === 'admin' ? [{ id: 'profile', label: 'Tài khoản', icon: Users }] : []),
   ];
 
   return (
@@ -47,10 +47,7 @@ export default function Sidebar({
             >
               <LogOut className="w-5 h-5" />
             </button>
-            <div 
-              onClick={() => setCurrentTab('profile')}
-              className="w-8 h-8 rounded-none border border-brand-primary cursor-pointer overflow-hidden transition-all hover:scale-105"
-            >
+            <div className="w-8 h-8 rounded-none border border-brand-primary overflow-hidden">
               <img
                 src={currentPlayer.avatar}
                 alt={currentPlayer.name}
@@ -77,10 +74,7 @@ export default function Sidebar({
           </div>
           
           {/* Identity Info Card */}
-          <div 
-            onClick={() => setCurrentTab('profile')}
-            className="mt-6 p-4 rounded-none border border-white/10 bg-brand-surface/40 hover:bg-brand-surface hover:border-brand-primary/40 transition-all cursor-pointer flex items-center gap-3 group"
-          >
+          <div className="mt-6 p-4 rounded-none border border-white/10 bg-brand-surface/40 flex items-center gap-3 group">
             <div className="relative">
               <img
                 src={currentPlayer.avatar}

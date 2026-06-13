@@ -19,15 +19,26 @@ export function settlePrediction(match: Match, prediction: Prediction): Predicti
   const isHomeWin = correctedHomeGoals > match.awayGoals;
   const isHandicapDraw = correctedHomeGoals === match.awayGoals;
 
-  if (prediction.choice === 'HOME') {
-    if (isHomeWin) return { status: 'WIN', penaltyVnd: 0 };
-    if (isHandicapDraw) return { status: 'LOSE_HALF', penaltyVnd: 5000 };
-    return { status: 'LOSE', penaltyVnd: 10000 };
+  const isPostGroupMatch = Boolean(match.matchType && match.matchType !== 'group');
+  const usesHopeStar = prediction.hopeStar && isPostGroupMatch;
+
+  const selectedTeamWins = prediction.choice === 'HOME'
+    ? isHomeWin
+    : !isHomeWin && !isHandicapDraw;
+
+  if (selectedTeamWins) {
+    return { status: 'WIN', penaltyVnd: usesHopeStar ? -10000 : 0 };
   }
 
-  if (!isHomeWin && !isHandicapDraw) return { status: 'WIN', penaltyVnd: 0 };
-  if (isHandicapDraw) return { status: 'LOSE_HALF', penaltyVnd: 5000 };
-  return { status: 'LOSE_DOUBLE', penaltyVnd: 20000 };
+  if (isHandicapDraw) {
+    return usesHopeStar
+      ? { status: 'LOSE', penaltyVnd: 10000 }
+      : { status: 'LOSE_HALF', penaltyVnd: 5000 };
+  }
+
+  return usesHopeStar
+    ? { status: 'LOSE_DOUBLE', penaltyVnd: 20000 }
+    : { status: 'LOSE', penaltyVnd: 10000 };
 }
 
 export function getOutcomeKey(status: PenaltyStatus) {

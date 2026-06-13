@@ -3,6 +3,7 @@ import { Player, Match, Prediction, ActivityFeedItem, Settlement } from './types
 import { fetchWorldCupMatches } from './services/api';
 import { getOutcomeKey, settlePrediction } from './domain/settlement';
 import { applyPlayerStats } from './domain/playerStats';
+import { isPredictionLocked } from './domain/predictionLock';
 import { clearBeerCupLocalState, loadJson, LOCAL_STORAGE_KEYS, saveJson } from './storage/localStore';
 import { isSupabaseConfigured } from './lib/supabase';
 import {
@@ -14,6 +15,7 @@ import {
   insertActivityToSupabase,
   upsertMatchesToSupabase,
   upsertPredictionToSupabase,
+  upsertSettlementsToSupabase,
 } from './services/supabaseData';
 
 import Sidebar from './components/Sidebar';
@@ -56,6 +58,7 @@ function buildDefaultHomePredictions(
           playerId: player.id,
           choice: 'HOME',
           timestamp: 'Mặc định chọn chủ nhà',
+          hopeStar: false,
         });
       }
     });
@@ -69,6 +72,32 @@ function persistDefaultPredictions(defaultPredictions: Prediction[]) {
 
   Promise.all(defaultPredictions.map((prediction) => upsertPredictionToSupabase(prediction))).catch((error) => {
     console.error('Failed to sync default home predictions to Supabase', error);
+  });
+}
+
+function buildSettlementsForFinishedMatches(
+  matches: Match[],
+  predictions: Prediction[],
+  options: { requirePredictionId?: boolean } = {}
+): Settlement[] {
+  return matches.flatMap((match) => {
+    if (match.status !== 'FINISHED' || match.homeGoals === undefined || match.awayGoals === undefined) return [];
+
+    return predictions.flatMap((prediction) => {
+      if (prediction.matchId !== match.id || !prediction.choice) return [];
+      if (options.requirePredictionId && !prediction.id) return [];
+
+      const settlement = settlePrediction(match, prediction);
+      if (settlement.status === 'SETTLE_PENDING') return [];
+
+      return [{
+        predictionId: prediction.id,
+        matchId: match.id,
+        playerId: prediction.playerId,
+        status: settlement.status,
+        penaltyVnd: settlement.penaltyVnd,
+      }];
+    });
   });
 }
 
@@ -189,18 +218,27 @@ export default function App() {
   // Handler to set prediction choice (Chủ nhà/Đội khách Voted)
   const handleTogglePrediction = (matchId: string, choice: 'HOME' | 'AWAY') => {
     const matchItem = matches.find((m) => m.id === matchId);
-    if (!matchItem || matchItem.status === 'FINISHED' || !predictionPlayer.id) return;
+    if (!matchItem || !predictionPlayer.id) return;
 
-    // Remove existing prediction for this player-match combo
+    if (isPredictionLocked(matchItem)) {
+      alert('Lựa chọn đã khóa trước giờ bóng lăn 1 tiếng.');
+      return;
+    }
+
+    const existingPrediction = predictions.find(
+      (p) => p.matchId === matchId && p.playerId === predictionPlayer.id
+    );
     const filteredPreds = predictions.filter(
       (p) => !(p.matchId === matchId && p.playerId === predictionPlayer.id)
     );
 
     const newPrediction: Prediction = {
+      ...existingPrediction,
       matchId,
       playerId: predictionPlayer.id,
       choice,
       timestamp: 'Vừa xong',
+      hopeStar: existingPrediction?.hopeStar ?? false,
     };
 
     setPredictions([...filteredPreds, newPrediction]);
@@ -224,6 +262,45 @@ export default function App() {
     if (isSupabaseConfigured) {
       insertActivityToSupabase(logItem, predictionPlayer.id).catch((error) => {
         console.error('Failed to sync activity to Supabase', error);
+      });
+    }
+  };
+
+  const handleToggleHopeStar = (matchId: string) => {
+    const matchItem = matches.find((m) => m.id === matchId);
+    if (!matchItem || !predictionPlayer.id) return;
+
+    if (isPredictionLocked(matchItem)) {
+      alert('Ngôi sao hy vọng đã khóa trước giờ bóng lăn 1 tiếng.');
+      return;
+    }
+
+    if (matchItem.matchType === 'group') {
+      alert('Ngôi sao hy vọng chỉ áp dụng từ vòng sau vòng bảng.');
+      return;
+    }
+
+    const existingPrediction = predictions.find(
+      (p) => p.matchId === matchId && p.playerId === predictionPlayer.id
+    );
+
+    const updatedPrediction: Prediction = {
+      ...existingPrediction,
+      matchId,
+      playerId: predictionPlayer.id,
+      choice: existingPrediction?.choice ?? 'HOME',
+      timestamp: 'Vừa xong',
+      hopeStar: !(existingPrediction?.hopeStar ?? false),
+    };
+
+    setPredictions((prevPredictions) => [
+      ...prevPredictions.filter((p) => !(p.matchId === matchId && p.playerId === predictionPlayer.id)),
+      updatedPrediction,
+    ]);
+
+    if (isSupabaseConfigured) {
+      upsertPredictionToSupabase(updatedPrediction).catch((error) => {
+        console.error('Failed to sync hope star to Supabase', error);
       });
     }
   };
@@ -267,32 +344,65 @@ export default function App() {
 
       setIsSyncing(true);
       const apiMatches = await fetchWorldCupMatches();
+      const existingMatchesById = new Map<string, Match>(matches.map((match) => [match.id, match]));
+      const syncedMatches = apiMatches.map((apiMatch) => {
+        const existingMatch = existingMatchesById.get(apiMatch.id);
+
+        if (existingMatch?.handicapIsManual) {
+          return {
+            ...apiMatch,
+            handicap: existingMatch.handicap,
+            handicapIsManual: true,
+            oddsUpdatedAt: existingMatch.oddsUpdatedAt,
+          };
+        }
+
+        return {
+          ...apiMatch,
+          handicapIsManual: false,
+        };
+      });
+
+      let latestPredictions = predictions;
+
       if (isSupabaseConfigured) {
-        await upsertMatchesToSupabase(apiMatches);
+        await upsertMatchesToSupabase(syncedMatches);
+
+        latestPredictions = await fetchPredictionsFromSupabase();
+        const defaultPredictions = buildDefaultHomePredictions(players, syncedMatches, latestPredictions);
+        if (defaultPredictions.length > 0) {
+          await Promise.all(defaultPredictions.map((prediction) => upsertPredictionToSupabase(prediction)));
+          latestPredictions = await fetchPredictionsFromSupabase();
+        }
+
+        const syncedSettlements = buildSettlementsForFinishedMatches(syncedMatches, latestPredictions, { requirePredictionId: true });
+        if (syncedSettlements.length > 0) {
+          await upsertSettlementsToSupabase(syncedSettlements);
+          setSettlements(await fetchSettlementsFromSupabase());
+        }
+
+        setPredictions(latestPredictions);
       }
       
-      // Merge with existing real matches.
+      // Merge with existing real matches while preserving manual handicap overrides.
       setMatches((prevMatches) => {
         const realMatches = prevMatches.filter(m => m.id.startsWith('wc26_'));
         const merged = [...realMatches];
         
-        apiMatches.forEach(apiMatch => {
+        syncedMatches.forEach(apiMatch => {
           const existingIdx = merged.findIndex(m => m.id === apiMatch.id);
           if (existingIdx >= 0) {
-            const existingMatch = merged[existingIdx];
-            merged[existingIdx] = {
-              ...apiMatch,
-              handicap: apiMatch.handicap !== 0 ? apiMatch.handicap : existingMatch.handicap
-            };
+            merged[existingIdx] = apiMatch;
           } else {
             merged.push(apiMatch);
           }
         });
 
-        const defaultPredictions = buildDefaultHomePredictions(players, merged, predictions);
-        if (defaultPredictions.length > 0) {
-          setPredictions((prevPredictions) => [...prevPredictions, ...defaultPredictions]);
-          persistDefaultPredictions(defaultPredictions);
+        if (!isSupabaseConfigured) {
+          const defaultPredictions = buildDefaultHomePredictions(players, merged, predictions);
+          if (defaultPredictions.length > 0) {
+            setPredictions((prevPredictions) => [...prevPredictions, ...defaultPredictions]);
+          }
         }
 
         return merged;
@@ -316,6 +426,31 @@ export default function App() {
     }
   };
 
+  const handleUpdateMatchHandicap = (matchId: string, handicap: number) => {
+    if (currentPlayer.role !== 'admin') {
+      alert('Chỉ quản trị viên mới được ghi đè kèo chấp.');
+      return;
+    }
+
+    const targetMatch = matches.find((match) => match.id === matchId);
+    if (!targetMatch) return;
+
+    const updatedMatch: Match = {
+      ...targetMatch,
+      handicap,
+      handicapIsManual: true,
+      oddsUpdatedAt: new Date().toISOString(),
+    };
+
+    setMatches((prevMatches) => prevMatches.map((match) => (match.id === matchId ? updatedMatch : match)));
+
+    if (isSupabaseConfigured) {
+      upsertMatchesToSupabase([updatedMatch]).catch((error) => {
+        console.error('Failed to sync manual handicap override to Supabase', error);
+      });
+    }
+  };
+
   // Sandbox result calculator. Uses shared settlement rules so the UI and backend can agree.
   const handleUpdateMatchStatus = (
     matchId: string,
@@ -335,25 +470,27 @@ export default function App() {
 
     setMatches(matches.map((m) => (m.id === matchId ? settledMatch : m)));
 
+    if (isSupabaseConfigured) {
+      upsertMatchesToSupabase([settledMatch])
+        .then(async () => {
+          const latestPredictions = await fetchPredictionsFromSupabase();
+          const newSettlements = buildSettlementsForFinishedMatches([settledMatch], latestPredictions, { requirePredictionId: true });
+          await upsertSettlementsToSupabase(newSettlements);
+          setPredictions(latestPredictions);
+          setSettlements(await fetchSettlementsFromSupabase());
+        })
+        .catch((error) => {
+          console.error('Failed to sync manual match result settlement to Supabase', error);
+        });
+    } else {
+      const newSettlements = buildSettlementsForFinishedMatches([settledMatch], predictions);
+      setSettlements((prevSettlements) => [
+        ...prevSettlements.filter((settlement) => settlement.matchId !== matchId),
+        ...newSettlements,
+      ]);
+    }
+
     const matchPredictions = predictions.filter((p) => p.matchId === matchId);
-
-    setPlayers(players.map((player) => {
-      const playerPrediction = matchPredictions.find((pred) => pred.playerId === player.id);
-      if (!playerPrediction?.choice) return player;
-
-      const settlement = settlePrediction(settledMatch, playerPrediction);
-      if (settlement.status === 'SETTLE_PENDING') return player;
-
-      return {
-        ...player,
-        totalPredictionsCount: player.totalPredictionsCount + 1,
-        notLoseCount: player.notLoseCount + (settlement.status === 'WIN' ? 1 : 0),
-        loseHalfCount: player.loseHalfCount + (settlement.status === 'LOSE_HALF' ? 1 : 0),
-        loseCount: player.loseCount + (settlement.status === 'LOSE' ? 1 : 0),
-        loseDoubleCount: player.loseDoubleCount + (settlement.status === 'LOSE_DOUBLE' ? 1 : 0),
-        totalPenaltyVnd: player.totalPenaltyVnd + settlement.penaltyVnd,
-      };
-    }));
 
     const brandNewLogs: ActivityFeedItem[] = matchPredictions.map((pred, i) => {
       const player = players.find((p) => p.id === pred.playerId);
@@ -401,6 +538,7 @@ export default function App() {
             activities={activities}
             onSelectPredictionPlayer={setPredictionPlayerId}
             onTogglePrediction={handleTogglePrediction}
+            onToggleHopeStar={handleToggleHopeStar}
             onOpenMatchDetails={setActiveSelectedMatch}
             onSyncMatches={handleSyncMatches}
             isSyncing={isSyncing}
@@ -416,8 +554,10 @@ export default function App() {
             predictions={predictions}
             onSelectPredictionPlayer={setPredictionPlayerId}
             onTogglePrediction={handleTogglePrediction}
+            onToggleHopeStar={handleToggleHopeStar}
             onOpenMatchDetails={setActiveSelectedMatch}
             onUpdateMatchStatus={handleUpdateMatchStatus}
+            onUpdateMatchHandicap={handleUpdateMatchHandicap}
             onResetMatches={handleResetMatches}
           />
         );
@@ -430,6 +570,8 @@ export default function App() {
           />
         );
       case 'profile':
+        if (currentPlayer.role !== 'admin') return null;
+
         return (
           <IdentitySelector
             currentPlayer={currentPlayer}

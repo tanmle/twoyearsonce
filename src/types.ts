@@ -27,6 +27,7 @@ export interface Match {
   homeLogo: string;
   awayLogo: string;
   handicap: number; // e.g. -0.5, -0.75, 0.0, 0.5
+  handicapIsManual?: boolean;
   time: string; // e.g. "22:00", "01:45"
   date: string; // e.g. "20 Oct, 2024"
   kickoffAt?: string; // ISO timestamp for reliable sorting
@@ -34,25 +35,31 @@ export interface Match {
   status: 'UPCOMING' | 'LIVE' | 'FINISHED';
   homeGoals?: number;
   awayGoals?: number;
+  homeScorers?: string[];
+  awayScorers?: string[];
   liveTimeText?: string; // e.g. "LIVE 67'", "LIVE IN 2H 45M"
   isHot?: boolean;
   externalId?: string;
   lastSyncedAt?: string;
   oddsUpdatedAt?: string;
+  matchType?: string;
 }
 
 export type PredictionChoice = 'HOME' | 'AWAY' | null;
 
 export interface Prediction {
+  id?: string;
   matchId: string;
   playerId: string;
   choice: PredictionChoice;
   timestamp: string; // e.g. "2 mins ago"
+  hopeStar?: boolean;
 }
 
 export type PenaltyStatus = 'WIN' | 'LOSE_HALF' | 'LOSE' | 'LOSE_DOUBLE' | 'SETTLE_PENDING';
 
 export interface Settlement {
+  predictionId?: string;
   matchId: string;
   playerId: string;
   status: Exclude<PenaltyStatus, 'SETTLE_PENDING'>;
