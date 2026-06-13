@@ -53,6 +53,8 @@ create table if not exists public.matches (
   is_hot boolean not null default false,
   last_synced_at timestamptz not null default now(),
   odds_updated_at timestamptz,
+  handicap_synced_at timestamptz,
+  handicap_sync_attempted_at timestamptz,
   match_type text,
   match_group text
 );
@@ -62,6 +64,10 @@ alter table public.matches
 
 alter table public.matches
   add column if not exists competition_id text references public.competitions(id) default 'worldcup-2026';
+
+alter table public.matches
+  add column if not exists handicap_synced_at timestamptz,
+  add column if not exists handicap_sync_attempted_at timestamptz;
 
 alter table public.matches
   add column if not exists home_scorers text[] not null default '{}',

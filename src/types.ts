@@ -49,6 +49,8 @@ export interface Match {
   externalId?: string;
   lastSyncedAt?: string;
   oddsUpdatedAt?: string;
+  handicapSyncedAt?: string;
+  handicapSyncAttemptedAt?: string;
   matchType?: string;
   matchGroup?: string;
   competitionId?: string;

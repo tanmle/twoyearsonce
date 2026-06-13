@@ -55,7 +55,16 @@ interface PredictionRow {
 }
 
 const API_BASE_URL = 'https://worldcup26.ir/get';
+const ODDS_API_URL = 'https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/';
 const VIETNAM_TIME_ZONE = 'Asia/Bangkok';
+const HANDICAP_SYNC_WINDOW_MINUTES_MIN = 45;
+const HANDICAP_SYNC_WINDOW_MINUTES_MAX = 70;
+
+const TEAM_ALIASES: Record<string, string> = {
+  bosniaandherzegovina: 'bosniaherzegovina',
+  democraticrepublicofthecongo: 'drcongo',
+  unitedstates: 'usa',
+};
 const FALLBACK_TEAM_LOGO =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(`
@@ -166,6 +175,44 @@ function parseGoals(raw: string | null | undefined) {
   return Number.isNaN(value) ? null : value;
 }
 
+function normalizeName(name: string) {
+  const clean = name.toLowerCase().replace(/[^a-z]/g, '');
+  return TEAM_ALIASES[clean] || clean;
+}
+
+function isInHandicapSyncWindow(kickoffAt: string, now: Date) {
+  const kickoffTime = new Date(kickoffAt).getTime();
+  if (Number.isNaN(kickoffTime)) return false;
+
+  const minutesUntilKickoff = (kickoffTime - now.getTime()) / 60000;
+  return minutesUntilKickoff >= HANDICAP_SYNC_WINDOW_MINUTES_MIN && minutesUntilKickoff <= HANDICAP_SYNC_WINDOW_MINUTES_MAX;
+}
+
+async function fetchOddsHandicapMap(oddsApiKey: string) {
+  const oddsUrl = `${ODDS_API_URL}?apiKey=${oddsApiKey}&regions=eu,us&markets=spreads`;
+  const oddsData = await fetchJson<any[]>(oddsUrl);
+  const oddsMap = new Map<string, number>();
+
+  if (!Array.isArray(oddsData)) return oddsMap;
+
+  oddsData.forEach((event) => {
+    const bookmaker = event.bookmakers?.[0];
+    const spreadsMarket = bookmaker?.markets?.find((market: any) => market.key === 'spreads');
+    const homeOutcome = spreadsMarket?.outcomes?.find((outcome: any) => (
+      normalizeName(outcome.name) === normalizeName(event.home_team)
+    ));
+
+    if (!homeOutcome || typeof homeOutcome.point !== 'number') return;
+
+    const homeKey = normalizeName(event.home_team);
+    const awayKey = normalizeName(event.away_team);
+    oddsMap.set(`${homeKey}_${awayKey}`, homeOutcome.point);
+    oddsMap.set(`${awayKey}_${homeKey}`, -homeOutcome.point);
+  });
+
+  return oddsMap;
+}
+
 function settlePrediction(match: MatchForSettlement, prediction: PredictionRow): { status?: SettlementStatus; penaltyVnd: number } {
   if (
     match.status !== 'FINISHED' ||
@@ -220,7 +267,7 @@ Deno.serve(async (req) => {
       fetchJson<{ teams?: WC26Team[] }>(`${API_BASE_URL}/teams`),
       fetchJson<{ games?: WC26Game[] }>(`${API_BASE_URL}/games`),
       fetchJson<{ stadiums?: WC26Stadium[] }>(`${API_BASE_URL}/stadiums`),
-      supabase.from('matches').select('id, handicap, handicap_is_manual, odds_updated_at'),
+      supabase.from('matches').select('id, handicap, handicap_is_manual, odds_updated_at, handicap_synced_at, handicap_sync_attempted_at'),
     ]);
 
     if (existingMatchesResult.error) throw existingMatchesResult.error;
@@ -267,6 +314,8 @@ Deno.serve(async (req) => {
         is_hot: status === 'LIVE' || status === 'UPCOMING',
         last_synced_at: syncedAt,
         odds_updated_at: existingMatch?.odds_updated_at ?? null,
+        handicap_synced_at: existingMatch?.handicap_synced_at ?? null,
+        handicap_sync_attempted_at: existingMatch?.handicap_sync_attempted_at ?? null,
         match_type: apiGame.type,
         match_group: apiGame.group ?? null,
       };
@@ -274,6 +323,41 @@ Deno.serve(async (req) => {
 
     const { error: matchesError } = await supabase.from('matches').upsert(matches);
     if (matchesError) throw matchesError;
+
+    const oddsApiKey = Deno.env.get('ODDS_API_KEY');
+    const now = new Date();
+    const handicapEligibleMatches = matches.filter((match) => (
+      match.status === 'UPCOMING' &&
+      !match.handicap_is_manual &&
+      !match.handicap_synced_at &&
+      !match.handicap_sync_attempted_at &&
+      isInHandicapSyncWindow(match.kickoff_at, now)
+    ));
+
+    let oddsApiCalled = false;
+    let handicapsUpdated = 0;
+    if (oddsApiKey && handicapEligibleMatches.length > 0) {
+      oddsApiCalled = true;
+      const oddsMap = await fetchOddsHandicapMap(oddsApiKey);
+      const handicapUpdates = handicapEligibleMatches.map((match) => {
+        const matchKey = `${normalizeName(match.home_team)}_${normalizeName(match.away_team)}`;
+        const handicap = oddsMap.get(matchKey);
+
+        return {
+          id: match.id,
+          handicap: handicap ?? match.handicap,
+          handicap_is_manual: false,
+          odds_updated_at: handicap === undefined ? match.odds_updated_at : syncedAt,
+          handicap_synced_at: handicap === undefined ? match.handicap_synced_at : syncedAt,
+          handicap_sync_attempted_at: syncedAt,
+        };
+      });
+
+      const { error: handicapError } = await supabase.from('matches').upsert(handicapUpdates);
+      if (handicapError) throw handicapError;
+
+      handicapsUpdated = handicapUpdates.filter((update) => update.handicap_synced_at === syncedAt).length;
+    }
 
     const finishedMatches = matches.filter((match) => (
       match.status === 'FINISHED' && match.home_goals !== null && match.away_goals !== null
@@ -330,6 +414,9 @@ Deno.serve(async (req) => {
       matches: matches.length,
       finishedMatches: finishedMatches.length,
       settlements: settlementsCount,
+      handicapEligibleMatches: handicapEligibleMatches.length,
+      oddsApiCalled,
+      handicapsUpdated,
       syncedAt,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
