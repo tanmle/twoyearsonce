@@ -5,6 +5,7 @@ import { formatHandicap, parseHandicapInput } from '../domain/handicap';
 import { sortMatchesChronologically, sortMatchesForFixtures } from '../domain/matches';
 import { isPredictionLocked } from '../domain/predictionLock';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
+import { formatMatchStage } from '../domain/matchStage';
 
 const getVietnamDateKey = (date: Date) => {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -198,11 +199,7 @@ export default function MatchList({
               players.filter((player) => getPlayerChoice(player.id) === choice);
             const shouldShowSelectionGroups =
               match.status === 'FINISHED' || match.status === 'LIVE' || isTodayOrTomorrowInVietnam(match);
-            const matchHeaderLabel = match.matchGroup
-              ? `BẢNG ${match.matchGroup}`
-              : match.matchType && match.matchType !== 'group'
-              ? match.matchType.toUpperCase()
-              : match.league;
+            const matchHeaderLabel = formatMatchStage(match);
             const showPredictionSummary = currentPlayer.role !== 'admin' && shouldShowSelectionGroups;
             const showAdminQuickEditor = currentPlayer.role === 'admin' && shouldShowSelectionGroups;
             return (
@@ -230,19 +227,16 @@ export default function MatchList({
                       </span>
                     </div>
 
-                    {match.status === 'UPCOMING' && (
-                      <div className="flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded-none text-text-muted border border-white/5">
-                        <Calendar className="w-3 h-3 text-brand-primary" />
-                        <span className="font-mono text-[9px] tracking-widest uppercase">{match.time}</span>
-                      </div>
-                    )}
-
-                    {match.status === 'FINISHED' && (
-                      <div className="flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded-none text-text-muted border border-white/5">
+                    <div className="flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded-none text-text-muted border border-white/5">
+                      {match.status === 'FINISHED' ? (
                         <Lock className="w-3 h-3 text-brand-primary" />
-                        <span className="font-mono text-[9px] uppercase tracking-widest font-bold">ĐÃ KHÓA</span>
-                      </div>
-                    )}
+                      ) : (
+                        <Calendar className="w-3 h-3 text-brand-primary" />
+                      )}
+                      <span className="font-mono text-[9px] tracking-widest uppercase font-bold">
+                        {match.status === 'FINISHED' ? `${match.date} • ĐÃ KHÓA` : `${match.date} • ${match.time}`}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Scorers / Box section clickable to review consensus details */}

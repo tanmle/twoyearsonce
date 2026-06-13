@@ -5,6 +5,7 @@ import { sortMatchesForFixtures } from '../domain/matches';
 import { isPredictionLocked } from '../domain/predictionLock';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 import { formatBeerUnits } from '../domain/beerUnits';
+import { formatMatchStage } from '../domain/matchStage';
 
 interface DashboardProps {
   currentPlayer: Player;
@@ -176,11 +177,7 @@ export default function Dashboard({
                 const predictionLocked = isPredictionLocked(match);
                 const matchHeaderLabel = match.status === 'LIVE'
                   ? (match.liveTimeText || 'TRỰC TIẾP')
-                  : match.matchGroup
-                  ? `BẢNG ${match.matchGroup}`
-                  : match.matchType && match.matchType !== 'group'
-                  ? match.matchType.toUpperCase()
-                  : 'WORLD CUP 2026';
+                  : formatMatchStage(match);
 
                 return (
                   <div key={match.id} className="bg-[#0A1622] border border-white/10 rounded-none overflow-hidden hover:border-white/20 transition-all duration-300">

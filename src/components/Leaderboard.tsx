@@ -6,6 +6,7 @@ import { settlePrediction } from '../domain/settlement';
 import { sortMatchesChronologically } from '../domain/matches';
 import { formatBeerUnits } from '../domain/beerUnits';
 import { getFormEmoji, getPlayerStreakSummary } from '../domain/streaks';
+import { formatMatchStage } from '../domain/matchStage';
 
 interface LeaderboardProps {
   currentPlayer: Player;
@@ -201,7 +202,7 @@ export default function Leaderboard({
                         {match.homeTeam} vs {match.awayTeam}
                       </div>
                       <div className="text-[9px] text-text-muted font-mono uppercase tracking-widest mt-1">
-                        {match.date} • {match.matchGroup ? `Bảng ${match.matchGroup}` : match.matchType || match.league}
+                        {match.date} • {formatMatchStage(match)}
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0 font-mono">
@@ -504,7 +505,7 @@ export default function Leaderboard({
                     }`}
                   >
                     <div className="flex items-center justify-between gap-3 text-[9px] font-mono uppercase tracking-widest text-text-muted mb-2">
-                      <span>{match.matchGroup ? `Bảng ${match.matchGroup}` : match.matchType || match.league}</span>
+                      <span>{formatMatchStage(match)}</span>
                       <span>{match.date} • {match.time}</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
