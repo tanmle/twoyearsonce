@@ -4,6 +4,7 @@ import { formatHandicap } from '../domain/handicap';
 import { sortMatchesForFixtures } from '../domain/matches';
 import { isPredictionLocked } from '../domain/predictionLock';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
+import { formatBeerUnits } from '../domain/beerUnits';
 
 interface DashboardProps {
   currentPlayer: Player;
@@ -130,16 +131,16 @@ export default function Dashboard({
                   <Coins className="w-4.5 h-4.5" />
                 </div>
                 <span className="text-[9px] font-mono tracking-widest text-[#FF265B] uppercase">
-                  tiền phạt
+                  beer phạt
                 </span>
               </div>
               <div className="mt-6">
                 <p className="font-mono text-[9px] text-text-muted uppercase tracking-widest">
-                  TỔNG TIỀN PHẠT
+                  TỔNG BEER PHẠT
                 </p>
                 <p className="font-display font-bold text-2xl text-status-lose mt-1 tracking-tight">
                   {currentPlayer.totalPenaltyVnd.toLocaleString('vi-VN')}
-                  <span className="text-[10px] font-mono ml-1 text-text-muted uppercase tracking-widest font-bold"> VND</span>
+                  <span className="text-[10px] font-mono ml-1 text-text-muted uppercase tracking-widest font-bold"> 🍺</span>
                 </p>
               </div>
             </div> */}
@@ -384,7 +385,7 @@ export default function Dashboard({
                       </span>
                     </div>
                     <span className="font-mono text-xs font-bold text-brand-primary">
-                      {player.totalPenaltyVnd === 0 ? '0 VND' : `${player.totalPenaltyVnd.toLocaleString('vi-VN')} VND`}
+                      {formatBeerUnits(player.totalPenaltyVnd)}
                     </span>
                   </div>
                 );

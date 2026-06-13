@@ -3,6 +3,7 @@ import { Calendar, CheckCircle2, XCircle, Users, BarChart3, Minimize2, MapPin, T
 import { formatHandicap } from '../domain/handicap';
 import { settlePrediction } from '../domain/settlement';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
+import { formatBeerUnits } from '../domain/beerUnits';
 
 interface MatchDetailsProps {
   currentPlayer: Player;
@@ -254,7 +255,7 @@ export default function MatchDetails({
                         </div>
                         {isLoser && (
                           <div className="font-mono text-[8px] text-status-lose uppercase tracking-widest mt-0.5">
-                            {predict.penaltyVnd.toLocaleString('vi-VN')} VND
+                            {formatBeerUnits(predict.penaltyVnd)}
                           </div>
                         )}
                       </div>
@@ -363,9 +364,9 @@ export default function MatchDetails({
                 </div>
 
                 <div className="w-full flex justify-between text-[10px] font-mono pt-1 uppercase tracking-widest">
-                  <span className="text-text-muted">Tiền phạt</span>
+                  <span className="text-text-muted">Beer phạt</span>
                   <span className={`font-bold ${outcomeStatus === 'WIN' ? 'text-status-not-lose' : 'text-status-lose'}`}>
-                    {isFinished ? `${penaltyVndAccrued.toLocaleString('vi-VN')} VND` : '0 VND'}
+                    {isFinished ? formatBeerUnits(penaltyVndAccrued) : '0 🍺'}
                   </span>
                 </div>
               </div>

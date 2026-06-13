@@ -4,6 +4,7 @@ import { Trophy, Download, TrendingDown, X } from 'lucide-react';
 import { formatHandicap } from '../domain/handicap';
 import { settlePrediction } from '../domain/settlement';
 import { sortMatchesChronologically } from '../domain/matches';
+import { formatBeerUnits } from '../domain/beerUnits';
 
 interface LeaderboardProps {
   currentPlayer: Player;
@@ -59,7 +60,7 @@ export default function Leaderboard({
 
   // Download Leaderboard action - triggers real CSV file download!
   const triggerDownloadCSV = () => {
-    const headers = ['Hạng', 'Người chơi', 'Tổng dự đoán', 'Không thua', 'Thua nửa', 'Thua', 'Thua đôi', 'Tổng tiền phạt (VND)'];
+    const headers = ['Hạng', 'Người chơi', 'Tổng dự đoán', 'Không thua', 'Thua nửa', 'Thua', 'Thua đôi', 'Tổng beer phạt'];
     const rows = sortedPlayers.map((player, index) => [
       index + 1,
       player.name,
@@ -68,7 +69,7 @@ export default function Leaderboard({
       player.loseHalfCount,
       player.loseCount,
       player.loseDoubleCount,
-      `${player.totalPenaltyVnd} VND`
+      formatBeerUnits(player.totalPenaltyVnd)
     ]);
 
     const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
@@ -105,8 +106,8 @@ export default function Leaderboard({
             <span className="text-white">THỜI GIAN THỰC</span>
           </div>
           <div className="flex items-center gap-2 bg-[#0A1622] px-4 py-2.5 rounded-none border border-status-lose/30 text-[9px] font-mono tracking-widest uppercase select-none">
-            <span className="text-text-muted">TỔNG TIỀN</span>
-            <span className="text-status-lose font-bold">{totalPenaltyPool.toLocaleString('vi-VN')} VND</span>
+            <span className="text-text-muted">TỔNG BEER PHẠT</span>
+            <span className="text-status-lose font-bold">{formatBeerUnits(totalPenaltyPool)}</span>
           </div>
         </div>
       </div>
@@ -135,7 +136,7 @@ export default function Leaderboard({
               {rank2.name}
             </h3>
             <p className="text-brand-primary font-mono text-sm font-bold mt-1 tracking-widest">
-              {rank2.totalPenaltyVnd === 0 ? '0 VND' : `${rank2.totalPenaltyVnd.toLocaleString('vi-VN')} VND`}
+              {formatBeerUnits(rank2.totalPenaltyVnd)}
             </p>
             {rank2.id === currentPlayer.id && (
               <span className="text-[8px] font-mono bg-white/5 border border-white/10 text-white px-2.5 py-0.5 rounded-none mt-3 uppercase tracking-widest font-bold">Đang đăng nhập</span>
@@ -165,7 +166,7 @@ export default function Leaderboard({
               {rank1.name}
             </h3>
             <p className="text-brand-primary font-mono text-lg font-black mt-1 tracking-widest">
-              {rank1.totalPenaltyVnd === 0 ? '0 VND' : `${rank1.totalPenaltyVnd.toLocaleString('vi-VN')} VND`}
+              {formatBeerUnits(rank1.totalPenaltyVnd)}
             </p>
             
             <div className="mt-3 flex gap-2">
@@ -201,7 +202,7 @@ export default function Leaderboard({
               {rank3.name}
             </h3>
             <p className="text-[#ff9e3b] font-mono text-sm font-bold mt-1 tracking-widest">
-              {rank3.totalPenaltyVnd === 0 ? '0 VND' : `${rank3.totalPenaltyVnd.toLocaleString('vi-VN')} VND`}
+              {formatBeerUnits(rank3.totalPenaltyVnd)}
             </p>
             {rank3.id === currentPlayer.id && (
               <span className="text-[8px] font-mono bg-white/5 border border-white/10 text-white px-2.5 py-0.5 rounded-none mt-3 uppercase tracking-widest font-bold">Đang đăng nhập</span>
@@ -227,7 +228,7 @@ export default function Leaderboard({
                   chi tiết kết quả • {selectedPlayer.name}
                 </h3>
                 <p className="text-[10px] text-text-muted font-mono uppercase tracking-widest mt-1">
-                  {selectedPlayer.totalPenaltyVnd.toLocaleString('vi-VN')} VND • {selectedPlayer.totalPredictionsCount} lượt
+                  {formatBeerUnits(selectedPlayer.totalPenaltyVnd)} • {selectedPlayer.totalPredictionsCount} lượt
                 </p>
               </div>
             </div>
@@ -287,7 +288,7 @@ export default function Leaderboard({
                         </div>
                         {match.status === 'FINISHED' && settlement && (
                           <div className={`text-[9px] font-mono font-bold mt-1 ${settlement.penaltyVnd > 0 ? 'text-status-lose' : 'text-status-not-lose'}`}>
-                            {settlement.penaltyVnd.toLocaleString('vi-VN')} VND
+                            {formatBeerUnits(settlement.penaltyVnd)}
                           </div>
                         )}
                       </div>
@@ -313,7 +314,7 @@ export default function Leaderboard({
                 <th className="px-4 py-4 text-center select-none text-status-lose-half">Thua nửa</th>
                 <th className="px-4 py-4 text-center select-none text-status-lose">Thua</th>
                 <th className="px-4 py-4 text-center select-none text-[#cf2424]">Thua đôi</th>
-                <th className="px-5 py-4 text-right w-36">Tổng tiền phạt</th>
+                <th className="px-5 py-4 text-right w-36">Tổng beer phạt</th>
               </tr>
             </thead>
             
@@ -384,8 +385,7 @@ export default function Leaderboard({
                     {/* Aggregate total penalty column */}
                     <td className="px-5 py-4 text-right font-mono font-bold text-sm text-white">
                       <span className={`${isUser ? 'text-brand-primary text-base' : ''}`}>
-                        {player.totalPenaltyVnd === 0 ? '0' : player.totalPenaltyVnd.toLocaleString('vi-VN')}
-                        <span className="text-[9px] text-text-muted tracking-widest ml-1">VND</span>
+                        {formatBeerUnits(player.totalPenaltyVnd)}
                       </span>
                     </td>
 
@@ -402,19 +402,19 @@ export default function Leaderboard({
         <div className="flex flex-wrap gap-4 text-[9px] font-mono font-bold tracking-widest uppercase select-none">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-not-lose"></span>
-            <span className="text-text-muted">Không thua: 0 phạt</span>
+            <span className="text-text-muted">Không thua: 0 🍺</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-lose-half"></span>
-            <span className="text-text-muted">Thua nửa: 0.5 phạt</span>
+            <span className="text-text-muted">Thua nửa: 5 🍺</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-lose"></span>
-            <span className="text-text-muted">Thua: 1.0 phạt</span>
+            <span className="text-text-muted">Thua: 10 🍺</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-lose-double"></span>
-            <span className="text-text-muted">Thua đôi: 2.0 phạt</span>
+            <span className="text-text-muted">Thua đôi: 20 🍺</span>
           </div>
         </div>
 

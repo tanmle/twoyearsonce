@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { Player } from '../types';
 import { UserCheck, ShieldCheck, Plus } from 'lucide-react';
+import { formatBeerUnits } from '../domain/beerUnits';
 
 interface IdentitySelectorProps {
   currentPlayer: Player;
@@ -134,12 +135,12 @@ export default function IdentitySelector({
               {/* Penalty information block */}
               <div className="mt-5 pt-4 border-t border-white/5 flex justify-between items-center text-xs">
                 <span className="text-[9px] font-mono text-text-muted uppercase tracking-widest font-bold">
-                  Tiền phạt:
+                  Beer phạt:
                 </span>
                 <span className={`font-mono font-bold ${
                   player.totalPenaltyVnd === 0 ? 'text-status-not-lose' : 'text-status-lose'
                 }`}>
-                  {player.totalPenaltyVnd === 0 ? '0 VND' : `${player.totalPenaltyVnd.toLocaleString('vi-VN')} VND`}
+                  {formatBeerUnits(player.totalPenaltyVnd)}
                 </span>
               </div>
 
