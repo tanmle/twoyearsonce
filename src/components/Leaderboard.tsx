@@ -22,6 +22,8 @@ export default function Leaderboard({
   // Ranks are calculated by ordering players by aggregate penalty descending (lowest is Rank 1!)
   const sortedPlayers = [...players].sort((a, b) => a.totalPenaltyVnd - b.totalPenaltyVnd);
 
+  const totalPenaltyPool = players.reduce((sum, player) => sum + player.totalPenaltyVnd, 0);
+
   // Identify podium stars
   const rank1 = sortedPlayers[0];
   const rank2 = sortedPlayers[1];
@@ -102,8 +104,9 @@ export default function Leaderboard({
             <TrendingDown className="w-3.5 h-3.5 text-brand-primary" />
             <span className="text-white">THỜI GIAN THỰC</span>
           </div>
-          <div className="flex items-center gap-2 bg-[#0A1622] px-4 py-2.5 rounded-none border border-white/10 text-[9px] font-mono tracking-widest uppercase select-none">
-            <span className="text-text-muted">MÙA HÈ 2026</span>
+          <div className="flex items-center gap-2 bg-[#0A1622] px-4 py-2.5 rounded-none border border-status-lose/30 text-[9px] font-mono tracking-widest uppercase select-none">
+            <span className="text-text-muted">TỔNG TIỀN</span>
+            <span className="text-status-lose font-bold">{totalPenaltyPool.toLocaleString('vi-VN')} VND</span>
           </div>
         </div>
       </div>
