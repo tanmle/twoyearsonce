@@ -1,6 +1,24 @@
 -- BeerCup shared-data starter schema.
 -- Run this in Supabase SQL editor. Do not put the database password in frontend code.
 
+create table if not exists public.competitions (
+  id text primary key,
+  name text not null,
+  year integer not null,
+  status text not null default 'archived' check (status in ('active', 'archived')),
+  created_at timestamptz not null default now()
+);
+
+insert into public.competitions (id, name, year, status)
+values
+  ('worldcup-2026', 'World Cup 2026', 2026, 'active'),
+  ('euro-2024', 'Euro 2024', 2024, 'archived'),
+  ('worldcup-2022', 'World Cup 2022', 2022, 'archived')
+on conflict (id) do update set
+  name = excluded.name,
+  year = excluded.year,
+  status = excluded.status;
+
 create table if not exists public.players (
   id text primary key,
   name text not null,
@@ -43,6 +61,9 @@ alter table public.matches
   add column if not exists handicap_is_manual boolean not null default false;
 
 alter table public.matches
+  add column if not exists competition_id text references public.competitions(id) default 'worldcup-2026';
+
+alter table public.matches
   add column if not exists home_scorers text[] not null default '{}',
   add column if not exists away_scorers text[] not null default '{}',
   add column if not exists match_type text,
@@ -62,6 +83,9 @@ create table if not exists public.predictions (
 alter table public.predictions
   add column if not exists hope_star boolean not null default false;
 
+alter table public.predictions
+  add column if not exists competition_id text references public.competitions(id) default 'worldcup-2026';
+
 create table if not exists public.settlements (
   id uuid primary key default gen_random_uuid(),
   match_id text not null references public.matches(id) on delete cascade,
@@ -69,9 +93,13 @@ create table if not exists public.settlements (
   prediction_id uuid not null references public.predictions(id) on delete cascade,
   status text not null check (status in ('WIN', 'LOSE_HALF', 'LOSE', 'LOSE_DOUBLE')),
   penalty_vnd integer not null default 0,
+  competition_id text references public.competitions(id) default 'worldcup-2026',
   settled_at timestamptz not null default now(),
   unique (prediction_id)
 );
+
+alter table public.settlements
+  add column if not exists competition_id text references public.competitions(id) default 'worldcup-2026';
 
 create table if not exists public.activities (
   id uuid primary key default gen_random_uuid(),
@@ -81,9 +109,14 @@ create table if not exists public.activities (
   target_text text,
   type text not null check (type in ('change_prediction', 'penalty', 'join_prediction')),
   status_type text check (status_type in ('LOSE_DOUBLE', 'LOSE_HALF', 'LOSE', 'WIN')),
+  competition_id text references public.competitions(id) default 'worldcup-2026',
   created_at timestamptz not null default now()
 );
 
+alter table public.activities
+  add column if not exists competition_id text references public.competitions(id) default 'worldcup-2026';
+
+alter table public.competitions enable row level security;
 alter table public.players enable row level security;
 alter table public.matches enable row level security;
 alter table public.predictions enable row level security;
@@ -92,6 +125,7 @@ alter table public.activities enable row level security;
 
 -- Public read for early friend-league prototype.
 -- PostgreSQL does not support CREATE POLICY IF NOT EXISTS, so drop/recreate for repeatable setup.
+drop policy if exists "public read competitions" on public.competitions;
 drop policy if exists "public read players" on public.players;
 drop policy if exists "public read matches" on public.matches;
 drop policy if exists "public read predictions" on public.predictions;
@@ -106,6 +140,7 @@ drop policy if exists "public write settlements" on public.settlements;
 drop policy if exists "public update settlements" on public.settlements;
 drop policy if exists "public write activities" on public.activities;
 
+create policy "public read competitions" on public.competitions for select using (true);
 create policy "public read players" on public.players for select using (true);
 create policy "public read matches" on public.matches for select using (true);
 create policy "public read predictions" on public.predictions for select using (true);

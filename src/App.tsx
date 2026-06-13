@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Player, Match, Prediction, ActivityFeedItem, Settlement } from './types';
+import { Player, Match, Prediction, ActivityFeedItem, Settlement, Competition } from './types';
 import { fetchWorldCupMatches } from './services/api';
 import { settlePrediction } from './domain/settlement';
 import { applyPlayerStats } from './domain/playerStats';
@@ -8,6 +8,7 @@ import { loadJson, LOCAL_STORAGE_KEYS, saveJson } from './storage/localStore';
 import { isSupabaseConfigured } from './lib/supabase';
 import {
   fetchActivitiesFromSupabase,
+  fetchCompetitionsFromSupabase,
   fetchMatchesFromSupabase,
   fetchPlayersFromSupabase,
   fetchPredictionsFromSupabase,
@@ -61,6 +62,7 @@ function buildDefaultHomePredictions(
         defaults.push({
           matchId: match.id,
           playerId: player.id,
+          competitionId: match.competitionId ?? 'worldcup-2026',
           choice: 'HOME',
           timestamp: 'Mặc định chọn chủ nhà',
           hopeStar: false,
@@ -122,6 +124,7 @@ function buildSettlementsForFinishedMatches(
         predictionId: prediction.id,
         matchId: match.id,
         playerId: prediction.playerId,
+        competitionId: match.competitionId ?? prediction.competitionId ?? 'worldcup-2026',
         status: settlement.status,
         penaltyVnd: settlement.penaltyVnd,
       }];
@@ -133,6 +136,11 @@ export default function App() {
   // Tab navigation state
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   
+  const [competitions, setCompetitions] = useState<Competition[]>([
+    { id: 'worldcup-2026', name: 'World Cup 2026', year: 2026, status: 'active' },
+  ]);
+  const [selectedCompetitionId, setSelectedCompetitionId] = useState('worldcup-2026');
+
   // Players state with persistent initialization
   const [players, setPlayers] = useState<Player[]>(() =>
     loadJson(LOCAL_STORAGE_KEYS.players, [])
@@ -197,7 +205,8 @@ export default function App() {
     async function loadRealData() {
       try {
         setIsLoadingRealData(true);
-        const [remotePlayers, remoteMatches, remotePredictions, remoteSettlements, remoteActivities] = await Promise.all([
+        const [remoteCompetitions, remotePlayers, remoteMatches, remotePredictions, remoteSettlements, remoteActivities] = await Promise.all([
+          fetchCompetitionsFromSupabase(),
           fetchPlayersFromSupabase(),
           fetchMatchesFromSupabase(),
           fetchPredictionsFromSupabase(),
@@ -210,6 +219,7 @@ export default function App() {
         const defaultPredictions = buildDefaultHomePredictions(remotePlayers, remoteMatches, remotePredictions);
         const predictionsWithDefaults = [...remotePredictions, ...defaultPredictions];
 
+        setCompetitions(remoteCompetitions.length > 0 ? remoteCompetitions : competitions);
         setPlayers(remotePlayers);
         setMatches(remoteMatches);
         setPredictions(predictionsWithDefaults);
@@ -234,8 +244,13 @@ export default function App() {
     };
   }, []);
 
+  const selectedCompetition = competitions.find((competition) => competition.id === selectedCompetitionId) ?? competitions[0];
+  const scopedMatches = matches.filter((match) => (match.competitionId ?? 'worldcup-2026') === selectedCompetitionId);
+  const scopedPredictions = predictions.filter((prediction) => (prediction.competitionId ?? 'worldcup-2026') === selectedCompetitionId);
+  const scopedSettlements = settlements.filter((settlement) => (settlement.competitionId ?? 'worldcup-2026') === selectedCompetitionId);
+
   // Find actualPlayer object
-  const playersWithStats = applyPlayerStats(players, predictions, settlements);
+  const playersWithStats = applyPlayerStats(players, scopedPredictions, scopedSettlements);
   const currentPlayer = currentPlayerId
     ? playersWithStats.find((p) => p.id === currentPlayerId) || EMPTY_PLAYER
     : EMPTY_PLAYER;
@@ -264,6 +279,7 @@ export default function App() {
       ...existingPrediction,
       matchId,
       playerId: predictionPlayer.id,
+      competitionId: matchItem.competitionId ?? selectedCompetitionId,
       choice,
       timestamp: 'Vừa xong',
       hopeStar: existingPrediction?.hopeStar ?? false,
@@ -331,6 +347,7 @@ export default function App() {
         ...existingPrediction,
         matchId,
         playerId,
+        competitionId: matchItem.competitionId ?? selectedCompetitionId,
         choice,
         timestamp: 'Admin vừa sửa',
         hopeStar: existingPrediction?.hopeStar ?? false,
@@ -381,6 +398,7 @@ export default function App() {
       ...existingPrediction,
       matchId,
       playerId: predictionPlayer.id,
+      competitionId: matchItem.competitionId ?? selectedCompetitionId,
       choice: existingPrediction?.choice ?? 'HOME',
       timestamp: 'Vừa xong',
       hopeStar: !(existingPrediction?.hopeStar ?? false),
@@ -446,9 +464,9 @@ export default function App() {
     };
 
     const nextPlayers = [...players, newPlayer].sort((a, b) => a.name.localeCompare(b.name));
-    const defaultPredictions = buildDefaultHomePredictions([newPlayer], matches, predictions, { includeFinished: true });
+    const defaultPredictions = buildDefaultHomePredictions([newPlayer], scopedMatches, scopedPredictions, { includeFinished: true });
     const nextPredictions = [...predictions, ...defaultPredictions];
-    const newSettlements = buildSettlementsForFinishedMatches(matches, defaultPredictions);
+    const newSettlements = buildSettlementsForFinishedMatches(scopedMatches, defaultPredictions);
 
     setPlayers(nextPlayers);
     if (defaultPredictions.length > 0) {
@@ -468,8 +486,8 @@ export default function App() {
 
       const latestPredictions = await fetchPredictionsFromSupabase();
       const newPlayerSettlements = buildSettlementsForFinishedMatches(
-        matches,
-        latestPredictions.filter((prediction) => prediction.playerId === newPlayer.id),
+        scopedMatches,
+        latestPredictions.filter((prediction) => prediction.playerId === newPlayer.id && (prediction.competitionId ?? 'worldcup-2026') === selectedCompetitionId),
         { requirePredictionId: true }
       );
       if (newPlayerSettlements.length > 0) {
@@ -670,7 +688,7 @@ export default function App() {
           currentPlayer={currentPlayer}
           players={playersWithStats}
           match={activeSelectedMatch}
-          predictions={predictions}
+          predictions={scopedPredictions}
           onClose={() => setActiveSelectedMatch(null)}
         />
       );
@@ -683,8 +701,8 @@ export default function App() {
             currentPlayer={currentPlayer}
             predictionPlayer={predictionPlayer}
             players={playersWithStats}
-            matches={matches}
-            predictions={predictions}
+            matches={scopedMatches}
+            predictions={scopedPredictions}
             activities={activities}
             onTogglePrediction={handleTogglePrediction}
             onToggleHopeStar={handleToggleHopeStar}
@@ -699,8 +717,8 @@ export default function App() {
             currentPlayer={currentPlayer}
             predictionPlayer={predictionPlayer}
             players={playersWithStats}
-            matches={matches}
-            predictions={predictions}
+            matches={scopedMatches}
+            predictions={scopedPredictions}
             onTogglePrediction={handleTogglePrediction}
             onToggleHopeStar={handleToggleHopeStar}
             onOverridePredictions={handleOverridePredictions}
@@ -713,8 +731,8 @@ export default function App() {
           <Leaderboard
             currentPlayer={currentPlayer}
             players={playersWithStats}
-            matches={matches}
-            predictions={predictions}
+            matches={scopedMatches}
+            predictions={scopedPredictions}
           />
         );
       case 'profile':
@@ -758,6 +776,22 @@ export default function App() {
 
       {/* Main Content scrollable container, desktop with proper margins relative to sidebar */}
       <main className="flex-1 lg:ml-64 px-4 pt-16 pb-24 lg:pt-8 lg:pb-8 max-w-full overflow-x-hidden">
+        <div className="mb-6 flex justify-end">
+          <label className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-text-muted">
+            Mùa giải
+            <select
+              value={selectedCompetitionId}
+              onChange={(event) => setSelectedCompetitionId(event.target.value)}
+              className="bg-[#102133] border border-white/10 rounded-none px-3 py-2 text-xs text-white focus:outline-none focus:border-brand-primary uppercase tracking-wider"
+            >
+              {competitions.map((competition) => (
+                <option key={competition.id} value={competition.id} className="bg-[#102133]">
+                  {competition.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         {renderTabContent()}
       </main>
     </div>

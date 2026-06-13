@@ -1,4 +1,4 @@
-import { ActivityFeedItem, League, Match, Player, Prediction, Settlement } from '../types';
+import { ActivityFeedItem, Competition, League, Match, Player, Prediction, Settlement } from '../types';
 import { supabase } from '../lib/supabase';
 
 function requireSupabase() {
@@ -16,6 +16,19 @@ export async function invokeWorldCupSync() {
 
   if (error) throw error;
   return data;
+}
+
+export async function fetchCompetitionsFromSupabase(): Promise<Competition[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.from('competitions').select('*').order('year', { ascending: false });
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    year: row.year,
+    status: row.status,
+  }));
 }
 
 export async function fetchPlayersFromSupabase(): Promise<Player[]> {
@@ -72,6 +85,7 @@ export async function fetchMatchesFromSupabase(): Promise<Match[]> {
     oddsUpdatedAt: row.odds_updated_at ?? undefined,
     matchType: row.match_type ?? undefined,
     matchGroup: row.match_group ?? undefined,
+    competitionId: row.competition_id ?? 'worldcup-2026',
   }));
 }
 
@@ -87,6 +101,7 @@ export async function fetchPredictionsFromSupabase(): Promise<Prediction[]> {
     choice: row.choice,
     timestamp: row.updated_at ? new Date(row.updated_at).toLocaleString('vi-VN') : 'Đã đồng bộ',
     hopeStar: row.hope_star ?? false,
+    competitionId: row.competition_id ?? 'worldcup-2026',
   }));
 }
 
@@ -101,6 +116,7 @@ export async function fetchSettlementsFromSupabase(): Promise<Settlement[]> {
     playerId: row.player_id,
     status: row.status,
     penaltyVnd: row.penalty_vnd ?? 0,
+    competitionId: row.competition_id ?? 'worldcup-2026',
   }));
 }
 
@@ -164,6 +180,7 @@ export async function upsertMatchesToSupabase(matches: Match[]) {
     odds_updated_at: match.oddsUpdatedAt,
     match_type: match.matchType,
     match_group: match.matchGroup,
+    competition_id: match.competitionId ?? 'worldcup-2026',
   })));
 
   if (error) throw error;
@@ -176,6 +193,7 @@ export async function upsertPredictionToSupabase(prediction: Prediction) {
     player_id: prediction.playerId,
     choice: prediction.choice,
     hope_star: prediction.hopeStar ?? false,
+    competition_id: prediction.competitionId ?? 'worldcup-2026',
     updated_at: new Date().toISOString(),
   }, { onConflict: 'match_id,player_id' });
 
@@ -192,6 +210,7 @@ export async function upsertSettlementsToSupabase(settlements: Settlement[]) {
     player_id: settlement.playerId,
     status: settlement.status,
     penalty_vnd: settlement.penaltyVnd,
+    competition_id: settlement.competitionId ?? 'worldcup-2026',
     settled_at: new Date().toISOString(),
   })), { onConflict: 'prediction_id' });
 

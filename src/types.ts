@@ -3,6 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+export interface Competition {
+  id: string;
+  name: string;
+  year: number;
+  status: 'active' | 'archived';
+}
+
 export interface Player {
   id: string; // e.g. 'huy', 'alex', 'anhquoc', 'minhhoang', 'vanthanh', 'trunghieu', 'tunglam', 'tiendung', 'minhphuong', 'quynh'
   name: string;
@@ -17,7 +24,7 @@ export interface Player {
   isCurrentUser?: boolean; 
 }
 
-export type League = 'PREMIER LEAGUE' | 'LA LIGA' | 'CHAMPIONS LEAGUE' | 'SERIE A' | 'WORLD CUP';
+export type League = 'PREMIER LEAGUE' | 'LA LIGA' | 'CHAMPIONS LEAGUE' | 'SERIE A' | 'WORLD CUP' | 'EURO';
 
 export interface Match {
   id: string;
@@ -44,6 +51,7 @@ export interface Match {
   oddsUpdatedAt?: string;
   matchType?: string;
   matchGroup?: string;
+  competitionId?: string;
 }
 
 export type PredictionChoice = 'HOME' | 'AWAY' | null;
@@ -55,6 +63,7 @@ export interface Prediction {
   choice: PredictionChoice;
   timestamp: string; // e.g. "2 mins ago"
   hopeStar?: boolean;
+  competitionId?: string;
 }
 
 export type PenaltyStatus = 'WIN' | 'LOSE_HALF' | 'LOSE' | 'LOSE_DOUBLE' | 'SETTLE_PENDING';
@@ -65,6 +74,7 @@ export interface Settlement {
   playerId: string;
   status: Exclude<PenaltyStatus, 'SETTLE_PENDING'>;
   penaltyVnd: number;
+  competitionId?: string;
 }
 
 export interface ActivityFeedItem {

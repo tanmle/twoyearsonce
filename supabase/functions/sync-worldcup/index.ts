@@ -246,6 +246,7 @@ Deno.serve(async (req) => {
       return {
         id: matchId,
         external_id: apiGame.id,
+        competition_id: 'worldcup-2026',
         league: 'WORLD CUP',
         home_team: homeTeam?.name_en ?? apiGame.home_team_name_en ?? apiGame.home_team_label ?? 'TBD',
         away_team: awayTeam?.name_en ?? apiGame.away_team_name_en ?? apiGame.away_team_label ?? 'TBD',
@@ -310,6 +311,7 @@ Deno.serve(async (req) => {
           player_id: prediction.player_id,
           status: settled.status,
           penalty_vnd: settled.penaltyVnd,
+          competition_id: 'worldcup-2026',
           settled_at: syncedAt,
         }];
       });
