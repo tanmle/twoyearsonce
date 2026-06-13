@@ -8,6 +8,16 @@ function requireSupabase() {
   return supabase;
 }
 
+export async function invokeWorldCupSync() {
+  const client = requireSupabase();
+  const { data, error } = await client.functions.invoke('sync-worldcup', {
+    method: 'POST',
+  });
+
+  if (error) throw error;
+  return data;
+}
+
 export async function fetchPlayersFromSupabase(): Promise<Player[]> {
   const client = requireSupabase();
   const { data, error } = await client.from('players').select('*').order('name');

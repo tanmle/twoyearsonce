@@ -14,6 +14,7 @@ import {
   fetchSettlementsFromSupabase,
   insertActivityToSupabase,
   insertPlayerToSupabase,
+  invokeWorldCupSync,
   upsertMatchesToSupabase,
   upsertPredictionToSupabase,
   upsertSettlementsToSupabase,
@@ -474,6 +475,32 @@ export default function App() {
       }
 
       setIsSyncing(true);
+
+      if (isSupabaseConfigured) {
+        try {
+          await invokeWorldCupSync();
+          const [remotePlayers, remoteMatches, remotePredictions, remoteSettlements, remoteActivities] = await Promise.all([
+            fetchPlayersFromSupabase(),
+            fetchMatchesFromSupabase(),
+            fetchPredictionsFromSupabase(),
+            fetchSettlementsFromSupabase(),
+            fetchActivitiesFromSupabase(),
+          ]);
+          const defaultPredictions = buildDefaultHomePredictions(remotePlayers, remoteMatches, remotePredictions);
+          if (defaultPredictions.length > 0) {
+            await Promise.all(defaultPredictions.map((prediction) => upsertPredictionToSupabase(prediction)));
+          }
+          setPlayers(remotePlayers);
+          setMatches(remoteMatches);
+          setPredictions(defaultPredictions.length > 0 ? await fetchPredictionsFromSupabase() : remotePredictions);
+          setSettlements(remoteSettlements);
+          setActivities(remoteActivities);
+          return;
+        } catch (error) {
+          console.warn('Edge sync failed, falling back to browser sync', error);
+        }
+      }
+
       const apiMatches = await fetchWorldCupMatches();
       const existingMatchesById = new Map<string, Match>(matches.map((match) => [match.id, match]));
       const syncedMatches = apiMatches.map((apiMatch) => {

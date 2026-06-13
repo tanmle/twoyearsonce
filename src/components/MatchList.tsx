@@ -2,7 +2,7 @@ import { useState, FormEvent } from 'react';
 import { Player, Match, Prediction } from '../types';
 import { Search, Calendar, Lock, AlertTriangle, Check, Star } from 'lucide-react';
 import { formatHandicap, parseHandicapInput } from '../domain/handicap';
-import { sortMatchesForFixtures } from '../domain/matches';
+import { sortMatchesChronologically, sortMatchesForFixtures } from '../domain/matches';
 import { isPredictionLocked } from '../domain/predictionLock';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 
@@ -66,7 +66,7 @@ export default function MatchList({
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
 
   // Filter matches based on search term and selected status filter
-  const filteredMatches = sortMatchesForFixtures(matches.filter((match) => {
+  const matchingMatches = matches.filter((match) => {
     const matchesSearch = !normalizedSearchTerm || [
       match.homeTeam,
       match.awayTeam,
@@ -83,7 +83,11 @@ export default function MatchList({
       return match.status === 'FINISHED';
     }
     return true; // ALL
-  }));
+  });
+
+  const filteredMatches = selectedFilter === 'ALL'
+    ? sortMatchesChronologically(matchingMatches)
+    : sortMatchesForFixtures(matchingMatches);
 
   const handleHandicapOverride = (e: FormEvent<HTMLFormElement>, matchId: string) => {
     e.preventDefault();
