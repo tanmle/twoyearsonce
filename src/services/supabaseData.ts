@@ -1,11 +1,31 @@
 import { ActivityFeedItem, Competition, League, Match, Player, Prediction, Settlement } from '../types';
 import { supabase } from '../lib/supabase';
 
+const SUPABASE_PAGE_SIZE = 1000;
+
 function requireSupabase() {
   if (!supabase) {
     throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.');
   }
   return supabase;
+}
+
+async function fetchAllRows<T>(buildQuery: (from: number, to: number) => any) {
+  const rows: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await buildQuery(from, from + SUPABASE_PAGE_SIZE - 1);
+    if (error) throw error;
+
+    const page = data ?? [];
+    rows.push(...page);
+
+    if (page.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return rows;
 }
 
 export async function invokeWorldCupSync() {
@@ -52,15 +72,14 @@ export async function fetchPlayersFromSupabase(): Promise<Player[]> {
 
 export async function fetchMatchesFromSupabase(): Promise<Match[]> {
   const client = requireSupabase();
-  const { data, error } = await client
+  const data = await fetchAllRows<any>((from, to) => client
     .from('matches')
     .select('*')
     .order('kickoff_at', { ascending: true, nullsFirst: false })
-    .order('display_date', { ascending: true });
+    .order('display_date', { ascending: true })
+    .range(from, to));
 
-  if (error) throw error;
-
-  return (data ?? []).map((row) => ({
+  return data.map((row) => ({ 
     id: row.id,
     externalId: row.external_id ?? undefined,
     league: row.league as League,
@@ -91,10 +110,13 @@ export async function fetchMatchesFromSupabase(): Promise<Match[]> {
 
 export async function fetchPredictionsFromSupabase(): Promise<Prediction[]> {
   const client = requireSupabase();
-  const { data, error } = await client.from('predictions').select('*');
-  if (error) throw error;
+  const data = await fetchAllRows<any>((from, to) => client
+    .from('predictions')
+    .select('*')
+    .order('created_at', { ascending: true })
+    .range(from, to));
 
-  return (data ?? []).map((row) => ({
+  return data.map((row) => ({ 
     id: row.id,
     matchId: row.match_id,
     playerId: row.player_id,
@@ -107,10 +129,13 @@ export async function fetchPredictionsFromSupabase(): Promise<Prediction[]> {
 
 export async function fetchSettlementsFromSupabase(): Promise<Settlement[]> {
   const client = requireSupabase();
-  const { data, error } = await client.from('settlements').select('*');
-  if (error) throw error;
+  const data = await fetchAllRows<any>((from, to) => client
+    .from('settlements')
+    .select('*')
+    .order('settled_at', { ascending: true })
+    .range(from, to));
 
-  return (data ?? []).map((row) => ({
+  return data.map((row) => ({ 
     predictionId: row.prediction_id,
     matchId: row.match_id,
     playerId: row.player_id,
