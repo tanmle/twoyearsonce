@@ -77,7 +77,7 @@ export default function Dashboard({
             World Cup 2026 • BeerCup
           </span>
           <h2 className="font-display italic font-medium text-4xl text-white tracking-tight mt-1 flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span>hi, <span className="text-brand-primary not-italic font-bold">{currentPlayer.name}</span></span>
+            <span>Lên bia, <span className="text-brand-primary not-italic font-bold">{currentPlayer.name}</span></span>
             <span className="inline-flex items-center gap-1.5 bg-status-lose/10 border border-status-lose/30 text-status-lose px-3 py-1 rounded-none font-mono not-italic text-xs font-black uppercase tracking-widest">
               {formatBeerUnits(currentPlayer.totalPenaltyVnd)}
             </span>
