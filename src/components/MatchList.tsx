@@ -7,6 +7,7 @@ import { isPredictionLocked } from '../domain/predictionLock';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 import { formatMatchStage } from '../domain/matchStage';
 import { formatLiveMatchTimestamp } from '../domain/matchClock';
+import { settlePrediction } from '../domain/settlement';
 
 const getVietnamDateKey = (date: Date) => {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -193,6 +194,14 @@ export default function MatchList({
             const hasPredicted = predictions.find(
               (p) => p.playerId === predictionPlayer.id && p.matchId === match.id
             );
+            const currentPlayerPrediction = predictions.find(
+              (p) => p.playerId === currentPlayer.id && p.matchId === match.id
+            );
+            const currentPlayerSettlement = currentPlayerPrediction ? settlePrediction(match, currentPlayerPrediction) : null;
+            const currentPlayerLost = match.status === 'FINISHED'
+              && currentPlayerSettlement !== null
+              && currentPlayerSettlement.status !== 'WIN'
+              && currentPlayerSettlement.status !== 'SETTLE_PENDING';
             const predictionLocked = isPredictionLocked(match);
             const matchPredictions = predictions.filter((prediction) => prediction.matchId === match.id);
             const getPlayerPrediction = (playerId: string) =>
@@ -210,7 +219,11 @@ export default function MatchList({
               <div
                 key={match.id}
                 className={`bg-[#0A1622] border rounded-none p-5 hover:border-brand-primary transition-all relative overflow-hidden group flex flex-col justify-between h-full ${
-                  match.status === 'LIVE' ? 'border-brand-primary' : 'border-white/10'
+                  currentPlayerLost
+                    ? 'border-status-lose/50 bg-status-lose/10'
+                    : match.status === 'LIVE'
+                    ? 'border-brand-primary'
+                    : 'border-white/10'
                 }`}
               >
                 {/* Micro-interaction dot indicator */}

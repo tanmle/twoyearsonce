@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Match, Player, Prediction, Settlement } from '../types';
-import { Trophy, Download, TrendingDown, X } from 'lucide-react';
+import { Trophy, Download, TrendingDown, X, Copy, Check } from 'lucide-react';
 import { formatHandicap } from '../domain/handicap';
 import { settlePrediction } from '../domain/settlement';
 import { sortMatchesChronologically } from '../domain/matches';
@@ -25,6 +25,8 @@ export default function Leaderboard({
 }: LeaderboardProps) {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [selectedStreak, setSelectedStreak] = useState<{ player: Player; kind: 'WIN' | 'LOSE' } | null>(null);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied'>('idle');
+  const leaderboardImageRef = useRef<HTMLDivElement | null>(null);
   // Ranks are calculated by ordering players by aggregate penalty descending (lowest is Rank 1!)
   const sortedPlayers = [...players].sort((a, b) => a.totalPenaltyVnd - b.totalPenaltyVnd);
 
@@ -154,6 +156,84 @@ export default function Leaderboard({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const copyLeaderboardImage = async () => {
+    const source = leaderboardImageRef.current;
+    if (!source || copyStatus === 'copying') return;
+
+    try {
+      setCopyStatus('copying');
+
+      const clone = source.cloneNode(true) as HTMLElement;
+      const copyStyles = (from: Element, to: Element) => {
+        const computed = window.getComputedStyle(from);
+        const target = to as HTMLElement;
+        Array.from(computed).forEach((property) => {
+          target.style.setProperty(property, computed.getPropertyValue(property), computed.getPropertyPriority(property));
+        });
+        Array.from(from.children).forEach((child, index) => {
+          const targetChild = to.children[index];
+          if (targetChild) copyStyles(child, targetChild);
+        });
+      };
+
+      copyStyles(source, clone);
+      clone.style.width = `${source.scrollWidth}px`;
+      clone.style.height = `${source.scrollHeight}px`;
+      clone.style.overflow = 'visible';
+      clone.querySelectorAll<HTMLElement>('.overflow-x-auto').forEach((element) => {
+        element.style.overflow = 'visible';
+      });
+
+      await Promise.all(Array.from(clone.querySelectorAll<HTMLImageElement>('img')).map(async (image) => {
+        const imageUrl = image.currentSrc || image.src;
+        if (!imageUrl || imageUrl.startsWith('data:')) return;
+
+        try {
+          const response = await fetch(imageUrl, { mode: 'cors' });
+          const blob = await response.blob();
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(String(reader.result));
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(blob);
+          });
+          image.src = dataUrl;
+        } catch {
+          image.removeAttribute('src');
+        }
+      }));
+
+      const width = source.scrollWidth;
+      const height = source.scrollHeight;
+      const markup = new XMLSerializer().serializeToString(clone);
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><foreignObject width="100%" height="100%">${markup}</foreignObject></svg>`;
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.src = svgUrl;
+      await image.decode();
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width * 2;
+      canvas.height = height * 2;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Không tạo được canvas');
+      context.scale(2, 2);
+      context.drawImage(image, 0, 0);
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Không tạo được ảnh')), 'image/png');
+      });
+
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      setCopyStatus('copied');
+      window.setTimeout(() => setCopyStatus('idle'), 2000);
+    } catch (error) {
+      console.error('Failed to copy leaderboard image', error);
+      alert('Không copy được ảnh bảng xếp hạng. Trình duyệt có thể không hỗ trợ copy ảnh vào clipboard.');
+      setCopyStatus('idle');
+    }
   };
 
   const streakMatches = selectedStreak ? getStreakMatches(selectedStreak.player, selectedStreak.kind) : [];
@@ -352,7 +432,7 @@ export default function Leaderboard({
 
 
       {/* Leaderboard */}
-      <div className="bg-[#0A1622] border border-white/10 rounded-none overflow-hidden">
+      <div ref={leaderboardImageRef} className="bg-[#0A1622] border border-white/10 rounded-none overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[700px]">
             <thead>
@@ -566,13 +646,24 @@ export default function Leaderboard({
           </div>
         </div>
 
-        <button
-          onClick={triggerDownloadCSV}
-          className="flex items-center gap-2 bg-brand-primary text-black font-sans font-bold uppercase tracking-widest text-[10px] px-6 py-3.5 rounded-none hover:bg-white transition-all cursor-pointer select-none active:scale-95 duration-200"
-        >
-          <Download className="w-4 h-4" />
-          <span>Tải bảng xếp hạng (CSV)</span>
-        </button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={copyLeaderboardImage}
+            disabled={copyStatus === 'copying'}
+            className="flex items-center justify-center gap-2 bg-white text-black font-sans font-bold uppercase tracking-widest text-[10px] px-6 py-3.5 rounded-none hover:bg-brand-primary transition-all cursor-pointer select-none active:scale-95 duration-200 disabled:opacity-60 disabled:cursor-wait"
+          >
+            {copyStatus === 'copied' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            <span>{copyStatus === 'copying' ? 'Đang copy ảnh...' : copyStatus === 'copied' ? 'Đã copy ảnh' : 'Copy bảng thành ảnh'}</span>
+          </button>
+
+          <button
+            onClick={triggerDownloadCSV}
+            className="flex items-center justify-center gap-2 bg-brand-primary text-black font-sans font-bold uppercase tracking-widest text-[10px] px-6 py-3.5 rounded-none hover:bg-white transition-all cursor-pointer select-none active:scale-95 duration-200"
+          >
+            <Download className="w-4 h-4" />
+            <span>Tải bảng xếp hạng (CSV)</span>
+          </button>
+        </div>
       </div>
     </div>
   );
