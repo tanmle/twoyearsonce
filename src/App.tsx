@@ -5,7 +5,7 @@ import { settlePrediction } from './domain/settlement';
 import { applyPlayerStats } from './domain/playerStats';
 import { isPredictionLocked } from './domain/predictionLock';
 import { loadJson, LOCAL_STORAGE_KEYS, saveJson } from './storage/localStore';
-import { isSupabaseConfigured } from './lib/supabase';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
 import {
   fetchActivitiesFromSupabase,
   fetchCompetitionsFromSupabase,
@@ -271,6 +271,60 @@ export default function App() {
     return () => {
       isMounted = false;
       window.clearInterval(intervalId);
+    };
+  }, []);
+
+  // Realtime DB updates for overview/dashboard, activities, scores, predictions, and player stats.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    let isMounted = true;
+    let refreshTimeoutId: number | undefined;
+
+    const refreshSharedData = async () => {
+      try {
+        const [remotePlayers, remoteMatches, remotePredictions, remoteSettlements, remoteActivities] = await Promise.all([
+          fetchPlayersFromSupabase(),
+          fetchMatchesFromSupabase(),
+          fetchPredictionsFromSupabase(),
+          fetchSettlementsFromSupabase(),
+          fetchActivitiesFromSupabase(),
+        ]);
+
+        if (!isMounted) return;
+
+        const defaultPredictions = buildDefaultHomePredictions(remotePlayers, remoteMatches, remotePredictions);
+        setPlayers(remotePlayers);
+        setMatches(remoteMatches);
+        setPredictions([...remotePredictions, ...defaultPredictions]);
+        setSettlements(remoteSettlements);
+        setActivities(remoteActivities);
+        persistDefaultPredictions(defaultPredictions);
+      } catch (error) {
+        console.warn('Failed to refresh realtime data', error);
+      }
+    };
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutId !== undefined) window.clearTimeout(refreshTimeoutId);
+      refreshTimeoutId = window.setTimeout(() => {
+        void refreshSharedData();
+      }, 300);
+    };
+
+    const channel = supabase
+      .channel('beercup-realtime-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'predictions' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settlements' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, scheduleRefresh)
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      if (refreshTimeoutId !== undefined) window.clearTimeout(refreshTimeoutId);
+      supabase.removeChannel(channel);
     };
   }, []);
 
