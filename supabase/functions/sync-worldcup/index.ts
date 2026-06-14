@@ -233,9 +233,7 @@ function settlePrediction(match: MatchForSettlement, prediction: PredictionRow):
     : !isHomeWin && !isHandicapDraw;
 
   if (selectedTeamWins) return { status: 'WIN', penaltyVnd: usesHopeStar ? -10000 : 0 };
-  if (isHandicapDraw) return usesHopeStar
-    ? { status: 'LOSE', penaltyVnd: 10000 }
-    : { status: 'LOSE_HALF', penaltyVnd: 5000 };
+  if (isHandicapDraw) return { status: 'WIN', penaltyVnd: 0 };
   return usesHopeStar
     ? { status: 'LOSE_DOUBLE', penaltyVnd: 20000 }
     : { status: 'LOSE', penaltyVnd: 10000 };

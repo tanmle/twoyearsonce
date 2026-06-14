@@ -31,9 +31,7 @@ export function settlePrediction(match: Match, prediction: Prediction): Predicti
   }
 
   if (isHandicapDraw) {
-    return usesHopeStar
-      ? { status: 'LOSE', penaltyVnd: 10000 }
-      : { status: 'LOSE_HALF', penaltyVnd: 5000 };
+    return { status: 'WIN', penaltyVnd: 0 };
   }
 
   return usesHopeStar

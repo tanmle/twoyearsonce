@@ -550,7 +550,7 @@ export default function Leaderboard({
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-lose-half"></span>
-            <span className="text-text-muted">Thua nửa: 5 🍺</span>
+            <span className="text-text-muted">Hòa kèo: 0 🍺</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-lose"></span>
