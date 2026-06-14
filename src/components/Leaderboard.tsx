@@ -87,7 +87,7 @@ export default function Leaderboard({
     const summary = streakByPlayerId.get(player.id) ?? getPlayerStreakSummary(player.id, matches, settlements);
 
     return (
-      <span className="ml-2 inline-flex gap-1 align-middle">
+      <span className="ml-1 sm:ml-2 inline-flex flex-wrap gap-0.5 sm:gap-1 align-middle">
         {summary.bestWinStreak >= 2 && (
           <button
             type="button"
@@ -95,7 +95,7 @@ export default function Leaderboard({
               event.stopPropagation();
               setSelectedStreak({ player, kind: 'WIN' });
             }}
-            className="inline-flex px-2 py-0.5 border border-brand-primary/40 text-brand-primary bg-brand-primary/10 text-[9px] font-mono font-bold hover:bg-brand-primary/20"
+            className="inline-flex px-1.5 sm:px-2 py-0.5 border border-brand-primary/40 text-brand-primary bg-brand-primary/10 text-[8px] sm:text-[9px] font-mono font-bold hover:bg-brand-primary/20 leading-none"
           >
             🔥 x{summary.bestWinStreak}
           </button>
@@ -107,7 +107,7 @@ export default function Leaderboard({
               event.stopPropagation();
               setSelectedStreak({ player, kind: 'LOSE' });
             }}
-            className="inline-flex px-2 py-0.5 border border-status-lose/40 text-status-lose bg-status-lose/10 text-[9px] font-mono font-bold hover:bg-status-lose/20"
+            className="inline-flex px-1.5 sm:px-2 py-0.5 border border-status-lose/40 text-status-lose bg-status-lose/10 text-[8px] sm:text-[9px] font-mono font-bold hover:bg-status-lose/20 leading-none"
           >
             🍺 x{summary.worstLoseStreak}
           </button>
@@ -135,11 +135,10 @@ export default function Leaderboard({
 
   // Download Leaderboard action - triggers real CSV file download!
   const triggerDownloadCSV = () => {
-    const headers = ['Hạng', 'Người chơi', 'Tổng dự đoán', 'Không thua', 'Thua nửa', 'Thua', 'Thua đôi', 'Tổng beer phạt'];
+    const headers = ['Hạng', 'Người chơi', 'Không thua', 'Thua nửa', 'Thua', 'Thua đôi', 'Tổng beer phạt'];
     const rows = sortedPlayers.map((player, index) => [
       index + 1,
       player.name,
-      player.totalPredictionsCount,
       player.notLoseCount,
       player.loseHalfCount,
       player.loseCount,
@@ -226,12 +225,40 @@ export default function Leaderboard({
         canvas.toBlob((result) => result ? resolve(result) : reject(new Error('Không tạo được ảnh')), 'image/png');
       });
 
-      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      const file = new File([blob], 'BeerCup_BangXepHang_WorldCup2026.png', { type: blob.type });
+
+      try {
+        if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+          throw new Error('Clipboard image is not supported');
+        }
+
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      } catch (clipboardError) {
+        console.warn('Clipboard image copy failed, falling back to share/download', clipboardError);
+
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: 'BeerCup bảng xếp hạng',
+            text: 'Bảng xếp hạng BeerCup',
+          });
+        } else {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = file.name;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }
+      }
+
       setCopyStatus('copied');
       window.setTimeout(() => setCopyStatus('idle'), 2000);
     } catch (error) {
-      console.error('Failed to copy leaderboard image', error);
-      alert('Không copy được ảnh bảng xếp hạng. Trình duyệt có thể không hỗ trợ copy ảnh vào clipboard.');
+      console.error('Failed to copy/share leaderboard image', error);
+      alert('Không copy/share được ảnh bảng xếp hạng. Trình duyệt có thể không hỗ trợ thao tác này.');
       setCopyStatus('idle');
     }
   };
@@ -434,17 +461,19 @@ export default function Leaderboard({
       {/* Leaderboard */}
       <div ref={leaderboardImageRef} className="bg-[#0A1622] border border-white/10 rounded-none overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[700px]">
+          <table className="w-full text-left border-collapse min-w-full md:min-w-[700px]">
             <thead>
               <tr className="border-b border-white/10 bg-[#040D17] text-text-muted text-[9px] font-mono tracking-widest uppercase">
-                <th className="px-5 py-4 w-12 text-center select-none">Hạng</th>
-                <th className="px-5 py-4 w-[200px]">Người chơi</th>
-                <th className="px-5 py-4 text-center select-none w-28">Tổng dự đoán</th>
-                <th className="px-4 py-4 text-center select-none text-status-not-lose">Không thua</th>
-                <th className="px-4 py-4 text-center select-none text-status-lose-half">Thua nửa</th>
-                <th className="px-4 py-4 text-center select-none text-status-lose">Thua</th>
-                <th className="px-4 py-4 text-center select-none text-[#cf2424]">Thua đôi</th>
-                <th className="px-5 py-4 text-right w-36">Tổng beer phạt</th>
+                <th className="px-3 sm:px-5 py-4 w-12 text-center select-none">Hạng</th>
+                <th className="px-3 sm:px-5 py-4 w-[160px] sm:w-[200px]">Người chơi</th>
+                <th className="hidden md:table-cell px-4 py-4 text-center select-none text-status-not-lose">Không thua</th>
+                <th className="hidden md:table-cell px-4 py-4 text-center select-none text-status-lose-half">Thua nửa</th>
+                <th className="hidden md:table-cell px-4 py-4 text-center select-none text-status-lose">Thua</th>
+                <th className="hidden md:table-cell px-4 py-4 text-center select-none text-[#cf2424]">Thua đôi</th>
+                <th className="px-3 sm:px-5 py-4 text-right w-24 sm:w-36">
+                  <span className="sm:hidden">Beer phạt</span>
+                  <span className="hidden sm:inline">Tổng beer phạt</span>
+                </th>
               </tr>
             </thead>
             
@@ -464,14 +493,14 @@ export default function Leaderboard({
                     }`}
                   >
                     {/* Rank Number */}
-                    <td className="px-5 py-4 text-center font-mono text-sm text-white select-all">
+                    <td className="px-3 sm:px-5 py-4 text-center font-mono text-sm text-white select-all">
                       <span className={`${isUser ? 'text-brand-primary font-bold' : ''}`}>
                         {rankNum}
                       </span>
                     </td>
 
                     {/* Player Info Row */}
-                    <td className="px-5 py-4">
+                    <td className="px-3 sm:px-5 py-4">
                       <div className="flex items-center gap-3">
                         <img
                           src={player.avatar}
@@ -479,8 +508,9 @@ export default function Leaderboard({
                           className="w-8 h-8 rounded-none object-cover border border-white/10"
                         />
                         <div className="min-w-0">
-                          <div className={`flex flex-wrap items-center gap-y-1 text-xs uppercase tracking-wider text-white ${isUser ? 'font-bold text-brand-primary' : 'font-medium'}`}>
-                            <span className="truncate max-w-[90px] sm:max-w-[120px]">{player.name}</span>{renderStreakBadges(player)}
+                          <div className={`flex flex-col sm:flex-row sm:items-center text-xs uppercase tracking-wider text-white ${isUser ? 'font-bold text-brand-primary' : 'font-medium'}`}>
+                            <span className="truncate max-w-[110px] sm:max-w-[120px]">{player.name}</span>
+                            <span className="mt-1 sm:mt-0 -ml-1 sm:ml-0">{renderStreakBadges(player)}</span>
                           </div>
                           {isUser && (
                             <span className="text-[7px] font-mono bg-brand-primary/10 text-brand-primary px-1 tracking-widest uppercase select-none">
@@ -492,28 +522,24 @@ export default function Leaderboard({
                     </td>
 
                     {/* Statistics counters */}
-                    <td className="px-5 py-4 text-center font-mono text-xs font-bold text-white">
-                      {player.totalPredictionsCount}
-                    </td>
-
-                    <td className="px-4 py-4 text-center font-mono text-xs font-bold text-status-not-lose">
+                    <td className="hidden md:table-cell px-4 py-4 text-center font-mono text-xs font-bold text-status-not-lose">
                       {player.notLoseCount}
                     </td>
 
-                    <td className="px-4 py-4 text-center font-mono text-xs font-bold text-status-lose-half">
+                    <td className="hidden md:table-cell px-4 py-4 text-center font-mono text-xs font-bold text-status-lose-half">
                       {player.loseHalfCount}
                     </td>
 
-                    <td className="px-4 py-4 text-center font-mono text-xs font-bold text-status-lose">
+                    <td className="hidden md:table-cell px-4 py-4 text-center font-mono text-xs font-bold text-status-lose">
                       {player.loseCount}
                     </td>
 
-                    <td className="px-4 py-4 text-center font-mono text-xs font-bold text-status-lose-double">
+                    <td className="hidden md:table-cell px-4 py-4 text-center font-mono text-xs font-bold text-status-lose-double">
                       {player.loseDoubleCount}
                     </td>
 
                     {/* Aggregate total penalty column */}
-                    <td className="px-5 py-4 text-right font-mono font-bold text-sm text-white">
+                    <td className="px-3 sm:px-5 py-4 text-right font-mono font-bold text-sm text-white">
                       <span className={`${isUser ? 'text-brand-primary text-base' : ''}`}>
                         {formatBeerUnits(player.totalPenaltyVnd)}
                       </span>
