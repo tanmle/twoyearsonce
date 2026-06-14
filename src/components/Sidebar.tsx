@@ -1,5 +1,5 @@
 import { Player } from '../types';
-import { LayoutGrid, ListTodo, Trophy, Users, LogOut, Bell } from 'lucide-react';
+import { LayoutGrid, ListTodo, Trophy, Users, LogOut, Bell, Table2 } from 'lucide-react';
 
 interface SidebarProps {
   currentPlayer: Player;
@@ -19,7 +19,12 @@ export default function Sidebar({
     { id: 'dashboard', label: 'Tổng quan', icon: LayoutGrid },
     { id: 'matches', label: 'Lịch đấu & Tỉ số', icon: ListTodo },
     { id: 'leaderboard', label: 'Bảng xếp hạng', icon: Trophy },
-    ...(currentPlayer.role === 'admin' ? [{ id: 'profile', label: 'Tài khoản', icon: Users }] : []),
+    ...(currentPlayer.role === 'admin'
+      ? [
+          { id: 'betting-grid', label: 'Đặt kèo', icon: Table2 },
+          { id: 'profile', label: 'Tài khoản', icon: Users },
+        ]
+      : []),
   ];
 
   return (

@@ -26,6 +26,7 @@ import Dashboard from './components/Dashboard';
 import MatchList from './components/MatchList';
 import Leaderboard from './components/Leaderboard';
 import MatchDetails from './components/MatchDetails';
+import AdminBettingGrid from './components/AdminBettingGrid';
 import IdentitySelector from './components/IdentitySelector';
 import Login from './components/Login';
 import { createFootballerAvatar } from './domain/playerAvatar';
@@ -506,6 +507,53 @@ export default function App() {
     }
   };
 
+  const handleOverrideHopeStar = (matchId: string, playerId: string, hopeStar: boolean) => {
+    if (currentPlayer.role !== 'admin') {
+      alert('Chỉ quản trị viên mới được sửa ngôi sao hy vọng.');
+      return;
+    }
+
+    const matchItem = matches.find((match) => match.id === matchId);
+    if (!matchItem) return;
+
+    if (matchItem.matchType === 'group') {
+      alert('Ngôi sao hy vọng chỉ áp dụng từ vòng sau vòng bảng.');
+      return;
+    }
+
+    const existingPrediction = predictions.find(
+      (prediction) => prediction.matchId === matchId && prediction.playerId === playerId
+    );
+
+    const updatedPrediction: Prediction = {
+      ...existingPrediction,
+      matchId,
+      playerId,
+      competitionId: matchItem.competitionId ?? selectedCompetitionId,
+      choice: existingPrediction?.choice ?? 'HOME',
+      timestamp: 'Admin vừa sửa',
+      hopeStar,
+    };
+
+    const nextPredictions = [
+      ...predictions.filter((prediction) => !(prediction.matchId === matchId && prediction.playerId === playerId)),
+      updatedPrediction,
+    ];
+
+    setPredictions(nextPredictions);
+
+    const syncHopeStarOverride = async () => {
+      if (isSupabaseConfigured) {
+        await upsertPredictionToSupabase(updatedPrediction);
+      }
+      await recalculateFinishedMatchSettlements(matchItem, nextPredictions);
+    };
+
+    syncHopeStarOverride().catch((error) => {
+      console.error('Failed to sync admin hope star override', error);
+    });
+  };
+
   // Handler to switch player identity
   const handleSelectPlayer = (player: Player) => {
     setCurrentPlayerId(player.id);
@@ -824,6 +872,19 @@ export default function App() {
             matches={scopedMatches}
             predictions={scopedPredictions}
             settlements={scopedSettlements}
+          />
+        );
+      case 'betting-grid':
+        if (currentPlayer.role !== 'admin') return null;
+
+        return (
+          <AdminBettingGrid
+            players={playersWithStats}
+            matches={scopedMatches}
+            predictions={scopedPredictions}
+            settlements={scopedSettlements}
+            onOverridePredictions={handleOverridePredictions}
+            onOverrideHopeStar={handleOverrideHopeStar}
           />
         );
       case 'profile':
