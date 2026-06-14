@@ -213,6 +213,12 @@ async function fetchOddsHandicapMap(oddsApiKey: string) {
   return oddsMap;
 }
 
+const EPSILON = 0.0001;
+
+function isEqual(value: number, target: number) {
+  return Math.abs(value - target) < EPSILON;
+}
+
 function settlePrediction(match: MatchForSettlement, prediction: PredictionRow): { status?: SettlementStatus; penaltyVnd: number } {
   if (
     match.status !== 'FINISHED' ||
@@ -223,17 +229,16 @@ function settlePrediction(match: MatchForSettlement, prediction: PredictionRow):
     return { penaltyVnd: 0 };
   }
 
-  const correctedHomeGoals = match.homeGoals + match.handicap;
-  const isHomeWin = correctedHomeGoals > match.awayGoals;
-  const isHandicapDraw = correctedHomeGoals === match.awayGoals;
+  const homeMargin = match.homeGoals + match.handicap - match.awayGoals;
+  const selectedMargin = prediction.choice === 'HOME' ? homeMargin : -homeMargin;
   const isPostGroupMatch = Boolean(match.matchType && match.matchType !== 'group');
   const usesHopeStar = prediction.hope_star && isPostGroupMatch;
-  const selectedTeamWins = prediction.choice === 'HOME'
-    ? isHomeWin
-    : !isHomeWin && !isHandicapDraw;
 
-  if (selectedTeamWins) return { status: 'WIN', penaltyVnd: usesHopeStar ? -10000 : 0 };
-  if (isHandicapDraw) return { status: 'WIN', penaltyVnd: 0 };
+  if (selectedMargin > EPSILON) return { status: 'WIN', penaltyVnd: usesHopeStar ? -10000 : 0 };
+  if (isEqual(selectedMargin, 0)) return { status: 'WIN', penaltyVnd: 0 };
+  if (isEqual(selectedMargin, -0.25)) return usesHopeStar
+    ? { status: 'LOSE', penaltyVnd: 10000 }
+    : { status: 'LOSE_HALF', penaltyVnd: 5000 };
   return usesHopeStar
     ? { status: 'LOSE_DOUBLE', penaltyVnd: 20000 }
     : { status: 'LOSE', penaltyVnd: 10000 };

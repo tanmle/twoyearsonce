@@ -5,6 +5,12 @@ export interface PredictionSettlement {
   penaltyVnd: number;
 }
 
+const EPSILON = 0.0001;
+
+function isEqual(value: number, target: number) {
+  return Math.abs(value - target) < EPSILON;
+}
+
 export function settlePrediction(match: Match, prediction: Prediction): PredictionSettlement {
   if (
     match.status !== 'FINISHED' ||
@@ -15,23 +21,24 @@ export function settlePrediction(match: Match, prediction: Prediction): Predicti
     return { status: 'SETTLE_PENDING', penaltyVnd: 0 };
   }
 
-  const correctedHomeGoals = match.homeGoals + match.handicap;
-  const isHomeWin = correctedHomeGoals > match.awayGoals;
-  const isHandicapDraw = correctedHomeGoals === match.awayGoals;
+  const homeMargin = match.homeGoals + match.handicap - match.awayGoals;
+  const selectedMargin = prediction.choice === 'HOME' ? homeMargin : -homeMargin;
 
   const isPostGroupMatch = Boolean(match.matchType && match.matchType !== 'group');
   const usesHopeStar = prediction.hopeStar && isPostGroupMatch;
 
-  const selectedTeamWins = prediction.choice === 'HOME'
-    ? isHomeWin
-    : !isHomeWin && !isHandicapDraw;
-
-  if (selectedTeamWins) {
+  if (selectedMargin > EPSILON) {
     return { status: 'WIN', penaltyVnd: usesHopeStar ? -10000 : 0 };
   }
 
-  if (isHandicapDraw) {
+  if (isEqual(selectedMargin, 0)) {
     return { status: 'WIN', penaltyVnd: 0 };
+  }
+
+  if (isEqual(selectedMargin, -0.25)) {
+    return usesHopeStar
+      ? { status: 'LOSE', penaltyVnd: 10000 }
+      : { status: 'LOSE_HALF', penaltyVnd: 5000 };
   }
 
   return usesHopeStar

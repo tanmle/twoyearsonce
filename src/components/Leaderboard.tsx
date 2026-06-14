@@ -546,11 +546,11 @@ export default function Leaderboard({
         <div className="flex flex-wrap gap-4 text-[9px] font-mono font-bold tracking-widest uppercase select-none">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-not-lose"></span>
-            <span className="text-text-muted">Không thua: 0 🍺</span>
+            <span className="text-text-muted">Không thua / hòa kèo: 0 🍺</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-lose-half"></span>
-            <span className="text-text-muted">Hòa kèo: 0 🍺</span>
+            <span className="text-text-muted">Thua nửa: 5 🍺</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-status-lose"></span>
