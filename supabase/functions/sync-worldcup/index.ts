@@ -412,6 +412,17 @@ Deno.serve(async (req) => {
       }
     }
 
+    const liveMatchesCount = matches.filter((match) => match.status === 'LIVE').length;
+    const { error: activityError } = await supabase.from('activities').insert({
+      player_name: 'Hệ thống',
+      action_text: 'đã đồng bộ dữ liệu trận đấu',
+      target_text: `${matches.length} trận • ${liveMatchesCount} live • ${finishedMatches.length} đã xong`,
+      type: 'join_prediction',
+      competition_id: 'worldcup-2026',
+      created_at: syncedAt,
+    });
+    if (activityError) console.warn('Failed to insert sync activity', activityError);
+
     return new Response(JSON.stringify({
       ok: true,
       matches: matches.length,

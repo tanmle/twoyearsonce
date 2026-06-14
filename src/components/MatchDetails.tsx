@@ -1,9 +1,10 @@
 import { Player, Match, Prediction } from '../types';
-import { Calendar, CheckCircle2, XCircle, Users, BarChart3, Minimize2, MapPin, Trophy } from 'lucide-react';
+import { Calendar, CheckCircle2, XCircle, Users, BarChart3, Minimize2, MapPin, Trophy, Clock } from 'lucide-react';
 import { formatHandicap } from '../domain/handicap';
 import { settlePrediction } from '../domain/settlement';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 import { formatBeerUnits } from '../domain/beerUnits';
+import { formatLiveMatchTimestamp } from '../domain/matchClock';
 
 interface MatchDetailsProps {
   currentPlayer: Player;
@@ -129,6 +130,11 @@ export default function MatchDetails({
             <div className="font-mono text-[10px] text-brand-primary bg-brand-primary/10 px-3.5 py-1 rounded-none mt-2 border border-brand-primary/20 select-none tracking-widest font-bold">
               KÈO CHẤP: {formatHandicap(match.handicap)}
             </div>
+            {match.status === 'LIVE' && (
+              <div className="font-mono text-[9px] text-status-lose bg-status-lose/10 px-3.5 py-1 rounded-none mt-2 border border-status-lose/20 select-none tracking-widest font-bold animate-pulse">
+                {formatLiveMatchTimestamp(match) || 'TRỰC TIẾP'}
+              </div>
+            )}
           </div>
 
           {/* Đội khách Team */}
@@ -170,6 +176,12 @@ export default function MatchDetails({
             <Calendar className="w-4 h-4 text-brand-primary" />
             <span className="text-white text-[10px]">{match.date} • {match.status === 'FINISHED' ? 'Đã kết thúc' : match.time}</span>
           </div>
+          {match.status === 'LIVE' && (
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-status-lose" />
+              <span className="text-white text-[10px]">{formatLiveMatchTimestamp(match) || 'TRỰC TIẾP'}</span>
+            </div>
+          )}
         </div>
       </section>
 

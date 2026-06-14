@@ -2,10 +2,11 @@ import { useState, FormEvent } from 'react';
 import { Player, Match, Prediction } from '../types';
 import { Search, Calendar, Lock, AlertTriangle, Check, Star } from 'lucide-react';
 import { formatHandicap, parseHandicapInput } from '../domain/handicap';
-import { sortMatchesChronologically, sortMatchesForFixtures } from '../domain/matches';
+import { sortMatchesChronologically, sortMatchesForFixtures, sortMatchesRecentlyFinished } from '../domain/matches';
 import { isPredictionLocked } from '../domain/predictionLock';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 import { formatMatchStage } from '../domain/matchStage';
+import { formatLiveMatchTimestamp } from '../domain/matchClock';
 
 const getVietnamDateKey = (date: Date) => {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -88,6 +89,8 @@ export default function MatchList({
 
   const filteredMatches = selectedFilter === 'ALL'
     ? sortMatchesChronologically(matchingMatches)
+    : selectedFilter === 'FINISHED'
+    ? sortMatchesRecentlyFinished(matchingMatches)
     : sortMatchesForFixtures(matchingMatches);
 
   const handleHandicapOverride = (e: FormEvent<HTMLFormElement>, matchId: string) => {
@@ -186,7 +189,7 @@ export default function MatchList({
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {filteredMatches.map((match) => {
+          {filteredMatches.map((match, index) => {
             const hasPredicted = predictions.find(
               (p) => p.playerId === predictionPlayer.id && p.matchId === match.id
             );
@@ -200,6 +203,7 @@ export default function MatchList({
             const shouldShowSelectionGroups =
               match.status === 'FINISHED' || match.status === 'LIVE' || isTodayOrTomorrowInVietnam(match);
             const matchHeaderLabel = formatMatchStage(match);
+            const matchListNumber = String(index + 1).padStart(2, '0');
             const showPredictionSummary = currentPlayer.role !== 'admin' && shouldShowSelectionGroups;
             const showAdminQuickEditor = currentPlayer.role === 'admin' && shouldShowSelectionGroups;
             return (
@@ -213,7 +217,7 @@ export default function MatchList({
                 {match.status === 'LIVE' && (
                   <div className="absolute top-0 right-0 py-1 px-3 bg-[#e53935] text-white flex items-center gap-1.5 leading-none">
                     <span className="w-1.5 h-1.5 bg-white animate-pulse"></span>
-                    <span className="font-mono text-[9px] font-bold tracking-wider">{match.liveTimeText || 'TRỰC TIẾP'}</span>
+                    <span className="font-mono text-[9px] font-bold tracking-wider">{formatLiveMatchTimestamp(match) || 'TRỰC TIẾP'}</span>
                   </div>
                 )}
 
@@ -221,6 +225,7 @@ export default function MatchList({
                 <div>
                   <div className="flex justify-between items-center mb-4">
                     <div className="flex items-center gap-1.5 select-none">
+                      <span className="font-mono text-[9px] font-black text-black bg-brand-primary px-1.5 py-0.5 leading-none">#{matchListNumber}</span>
                       <span className="w-1 h-1 bg-brand-primary"></span>
                       <span className="font-mono text-[9px] font-bold text-brand-primary uppercase tracking-widest">
                         {matchHeaderLabel}
@@ -234,7 +239,11 @@ export default function MatchList({
                         <Calendar className="w-3 h-3 text-brand-primary" />
                       )}
                       <span className="font-mono text-[9px] tracking-widest uppercase font-bold">
-                        {match.status === 'FINISHED' ? `${match.date} • ĐÃ KHÓA` : `${match.date} • ${match.time}`}
+                        {match.status === 'LIVE'
+                          ? `${match.date} • ${formatLiveMatchTimestamp(match) || 'TRỰC TIẾP'}`
+                          : match.status === 'FINISHED'
+                          ? `${match.date} • ĐÃ KHÓA`
+                          : `${match.date} • ${match.time}`}
                       </span>
                     </div>
                   </div>

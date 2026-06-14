@@ -6,6 +6,7 @@ import { isPredictionLocked } from '../domain/predictionLock';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 import { formatBeerUnits } from '../domain/beerUnits';
 import { formatMatchStage } from '../domain/matchStage';
+import { formatLiveMatchTimestamp } from '../domain/matchClock';
 
 interface DashboardProps {
   currentPlayer: Player;
@@ -176,7 +177,7 @@ export default function Dashboard({
                 );
                 const predictionLocked = isPredictionLocked(match);
                 const matchHeaderLabel = match.status === 'LIVE'
-                  ? (match.liveTimeText || 'TRỰC TIẾP')
+                  ? (formatLiveMatchTimestamp(match) || 'TRỰC TIẾP')
                   : formatMatchStage(match);
 
                 return (
@@ -188,7 +189,7 @@ export default function Dashboard({
                         {matchHeaderLabel}
                       </span>
                       <span className="font-mono text-[9px] text-text-muted bg-white/5 px-2 py-1 uppercase tracking-widest border border-white/5">
-                        {match.time} • {match.date}
+                        {match.status === 'LIVE' ? (formatLiveMatchTimestamp(match) || 'TRỰC TIẾP') : match.time} • {match.date}
                       </span>
                     </div>
 
@@ -234,8 +235,8 @@ export default function Dashboard({
                         <div className="flex flex-col items-center justify-center min-w-[76px] sm:min-w-[120px] py-2">
                           {match.status === 'LIVE' ? (
                             <>
-                              <span className="text-[9px] font-mono tracking-widest text-status-lose uppercase font-bold animate-pulse">
-                                LIVE
+                              <span className="text-[9px] font-mono tracking-widest text-status-lose uppercase font-bold animate-pulse text-center">
+                                {formatLiveMatchTimestamp(match) || 'LIVE'}
                               </span>
                               <span className="font-mono font-black text-2xl sm:text-4xl text-brand-primary tracking-widest mt-1">
                                 {match.homeGoals ?? 0} - {match.awayGoals ?? 0}

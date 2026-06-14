@@ -245,6 +245,41 @@ export default function App() {
     };
   }, []);
 
+  // Keep live scores, settlements, and cron sync activities fresh while the app is open.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    let isMounted = true;
+    const refreshCronSyncedData = async () => {
+      try {
+        const [remoteMatches, remoteSettlements, remoteActivities] = await Promise.all([
+          fetchMatchesFromSupabase(),
+          fetchSettlementsFromSupabase(),
+          fetchActivitiesFromSupabase(),
+        ]);
+
+        if (!isMounted) return;
+        setMatches(remoteMatches);
+        setSettlements(remoteSettlements);
+        setActivities(remoteActivities);
+      } catch (error) {
+        console.warn('Failed to refresh cron-synced data', error);
+      }
+    };
+
+    const intervalId = window.setInterval(refreshCronSyncedData, 60_000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeSelectedMatch) return;
+    const latestMatch = matches.find((match) => match.id === activeSelectedMatch.id);
+    if (latestMatch && latestMatch !== activeSelectedMatch) setActiveSelectedMatch(latestMatch);
+  }, [matches, activeSelectedMatch]);
+
   const selectedCompetition = competitions.find((competition) => competition.id === selectedCompetitionId) ?? competitions[0];
   const scopedMatches = matches.filter((match) => (match.competitionId ?? 'worldcup-2026') === selectedCompetitionId);
   const scopedPredictions = predictions.filter((prediction) => (prediction.competitionId ?? 'worldcup-2026') === selectedCompetitionId);

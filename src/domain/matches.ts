@@ -28,6 +28,14 @@ export function sortMatchesForFixtures(matches: Match[]) {
   });
 }
 
+export function sortMatchesRecentlyFinished(matches: Match[]) {
+  return [...matches].sort((a, b) => {
+    const timeDiff = matchTimeValue(b) - matchTimeValue(a);
+    if (timeDiff !== 0) return timeDiff;
+    return a.id.localeCompare(b.id);
+  });
+}
+
 export function sortMatchesChronologically(matches: Match[]) {
   return [...matches].sort((a, b) => {
     const timeDiff = matchTimeValue(a) - matchTimeValue(b);

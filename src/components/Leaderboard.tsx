@@ -255,7 +255,7 @@ export default function Leaderboard({
         {rank2 && (
           <div 
             onClick={() => setSelectedPlayer(rank2)}
-            className="bg-[#0A1622] hover:bg-[#102133] border border-white/10 rounded-none p-6 flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer transition-all duration-300 md:order-1"
+            className="bg-[#0A1622] hover:bg-[#102133] border border-white/10 rounded-none p-6 flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer transition-all duration-300 order-2 md:order-1"
           >
             <div className="relative mb-4">
               <img
@@ -285,7 +285,7 @@ export default function Leaderboard({
         {rank1 && (
           <div 
             onClick={() => setSelectedPlayer(rank1)}
-            className="bg-[#1A180E] hover:bg-[#232012] border-2 border-brand-primary rounded-none p-8 flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer shadow-xl transition-all duration-300 md:scale-105 z-10 md:order-2"
+            className="bg-[#1A180E] hover:bg-[#232012] border-2 border-brand-primary rounded-none p-8 flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer shadow-xl transition-all duration-300 md:scale-105 z-10 order-1 md:order-2"
           >
             <div className="relative mb-5">
               <img
@@ -321,7 +321,7 @@ export default function Leaderboard({
         {rank3 && (
           <div 
             onClick={() => setSelectedPlayer(rank3)}
-            className="bg-[#0A1622] hover:bg-[#102133] border border-white/10 rounded-none p-6 flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer transition-all duration-300 hover:scale-[1.02] md:order-3"
+            className="bg-[#0A1622] hover:bg-[#102133] border border-white/10 rounded-none p-6 flex flex-col items-center justify-center relative overflow-hidden group cursor-pointer transition-all duration-300 hover:scale-[1.02] order-3 md:order-3"
           >
             <div className="relative mb-4">
               <img
@@ -488,8 +488,9 @@ export default function Leaderboard({
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-[520px] overflow-y-auto pr-1">
-              {selectedPlayerPredictions.map(({ match, prediction }) => {
+              {selectedPlayerPredictions.map(({ match, prediction }, index) => {
                 const settlement = prediction ? settlePrediction(match, prediction) : null;
+                const matchListNumber = String(index + 1).padStart(2, '0');
                 const isLoser = match.status === 'FINISHED' && settlement?.status !== 'WIN' && settlement?.status !== 'SETTLE_PENDING';
                 const isWinner = match.status === 'FINISHED' && settlement?.status === 'WIN';
 
@@ -505,7 +506,10 @@ export default function Leaderboard({
                     }`}
                   >
                     <div className="flex items-center justify-between gap-3 text-[9px] font-mono uppercase tracking-widest text-text-muted mb-2">
-                      <span>{formatMatchStage(match)}</span>
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="font-black text-black bg-brand-primary px-1.5 py-0.5 leading-none">#{matchListNumber}</span>
+                        <span className="truncate">{formatMatchStage(match)}</span>
+                      </span>
                       <span>{match.date} • {match.time}</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">

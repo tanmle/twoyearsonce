@@ -69,7 +69,7 @@ export function getPlayerStreakSummary(
     currentCount,
     bestWinStreak,
     worstLoseStreak,
-    recentResults: orderedResults.slice(-8).reverse(),
+    recentResults: orderedResults.slice(-8),
   };
 }
 
