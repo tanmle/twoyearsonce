@@ -461,11 +461,11 @@ export default function Leaderboard({
       {/* Leaderboard */}
       <div ref={leaderboardImageRef} className="bg-[#0A1622] border border-white/10 rounded-none overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-full md:min-w-[700px]">
+          <table className="w-full text-left border-collapse table-fixed min-w-[360px] sm:min-w-[520px] md:min-w-[700px]">
             <thead>
               <tr className="border-b border-white/10 bg-[#040D17] text-text-muted text-[9px] font-mono tracking-widest uppercase">
                 <th className="px-3 sm:px-5 py-4 w-12 text-center select-none">Hạng</th>
-                <th className="px-3 sm:px-5 py-4 w-[160px] sm:w-[200px]">Người chơi</th>
+                <th className="px-3 sm:px-5 py-4 w-[52%] sm:w-[260px] md:w-[220px]">Người chơi</th>
                 <th className="hidden md:table-cell px-4 py-4 text-center select-none text-status-not-lose">Không thua</th>
                 <th className="hidden md:table-cell px-4 py-4 text-center select-none text-status-lose-half">Thua nửa</th>
                 <th className="hidden md:table-cell px-4 py-4 text-center select-none text-status-lose">Thua</th>
@@ -505,18 +505,13 @@ export default function Leaderboard({
                         <img
                           src={player.avatar}
                           alt={player.name}
-                          className="w-8 h-8 rounded-none object-cover border border-white/10"
+                          className="w-8 h-8 shrink-0 rounded-none object-cover border border-white/10"
                         />
-                        <div className="min-w-0">
-                          <div className={`flex flex-col sm:flex-row sm:items-center text-xs uppercase tracking-wider text-white ${isUser ? 'font-bold text-brand-primary' : 'font-medium'}`}>
-                            <span className="truncate max-w-[110px] sm:max-w-[120px]">{player.name}</span>
-                            <span className="mt-1 sm:mt-0 -ml-1 sm:ml-0">{renderStreakBadges(player)}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className={`flex flex-col items-start text-xs uppercase tracking-wider text-white ${isUser ? 'font-bold text-brand-primary' : 'font-medium'}`}>
+                            <span className="block w-full min-w-0 truncate max-w-[180px] sm:max-w-[220px] md:max-w-full" title={player.name}>{player.name}</span>
+                            <span className="mt-1 -ml-1 sm:ml-0">{renderStreakBadges(player)}</span>
                           </div>
-                          {isUser && (
-                            <span className="text-[7px] font-mono bg-brand-primary/10 text-brand-primary px-1 tracking-widest uppercase select-none">
-                              BẠN
-                            </span>
-                          )}
                         </div>
                       </div>
                     </td>
