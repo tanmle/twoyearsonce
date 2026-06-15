@@ -27,10 +27,10 @@ function formatPenalty(penaltyVnd: number) {
   return `${sign}${penaltyVnd.toLocaleString('vi-VN')}đ`;
 }
 
-function statusLabel(status: Settlement['status']) {
-  switch (status) {
+function statusLabel(settlement: Settlement) {
+  switch (settlement.status) {
     case 'WIN':
-      return 'WIN';
+      return settlement.penaltyVnd < 0 ? 'WIN' : 'NOT LOSE';
     case 'LOSE_HALF':
       return 'HALF';
     case 'LOSE':
@@ -40,10 +40,12 @@ function statusLabel(status: Settlement['status']) {
   }
 }
 
-function resultClass(status?: Settlement['status']) {
-  switch (status) {
+function resultClass(settlement?: Settlement) {
+  switch (settlement?.status) {
     case 'WIN':
-      return 'border-status-not-lose/50 bg-status-not-lose/10 text-status-not-lose';
+      return settlement.penaltyVnd < 0
+        ? 'border-[#ff9e3b]/60 bg-[#ff9e3b]/10 text-[#ff9e3b]'
+        : 'border-status-not-lose/50 bg-status-not-lose/10 text-status-not-lose';
     case 'LOSE_HALF':
       return 'border-yellow-400/50 bg-yellow-400/10 text-yellow-300';
     case 'LOSE':
@@ -304,11 +306,11 @@ export default function AdminBettingGrid({
                     const isHopeStar = prediction?.hopeStar ?? false;
 
                     return (
-                      <td key={player.id} className={`border-r border-b border-white/10 px-1 py-1 align-middle ${resultClass(match.status === 'FINISHED' ? settlement?.status : undefined)}`}>
+                      <td key={player.id} className={`border-r border-b border-white/10 px-1 py-1 align-middle ${resultClass(match.status === 'FINISHED' ? settlement : undefined)}`}>
                         <div className="space-y-1">
                           {match.status === 'FINISHED' && settlement && (
                             <div className="text-[8px] font-mono uppercase tracking-wider font-black text-center">
-                              {statusLabel(settlement.status)}
+                              {statusLabel(settlement)}
                             </div>
                           )}
 
@@ -330,7 +332,7 @@ export default function AdminBettingGrid({
                                   onClick={() => setChoice(match, player, 'AWAY')}
                                   className={`px-1 2xl:px-2 py-1 text-[8px] 2xl:text-[9px] font-mono uppercase tracking-wider 2xl:tracking-widest border transition-all truncate ${
                                     choice === 'AWAY'
-                                      ? 'bg-brand-primary text-black border-brand-primary font-black'
+                                      ? 'bg-[#ff9e3b]/10 text-[#ff9e3b] border-[#ff9e3b] font-black'
                                       : 'border-white/10 text-text-muted hover:text-white hover:border-brand-primary/40'
                                   }`}
                                   title={match.awayTeam}
