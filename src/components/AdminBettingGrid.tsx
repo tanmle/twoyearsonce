@@ -98,6 +98,7 @@ export default function AdminBettingGrid({
   const [searchTerm, setSearchTerm] = useState('');
   const [unlockedCells, setUnlockedCells] = useState<Set<string>>(() => new Set());
   const [unlockedRows, setUnlockedRows] = useState<Set<string>>(() => new Set());
+  const [historyPlayerId, setHistoryPlayerId] = useState<string | null>(null);
 
   const filteredMatches = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -182,6 +183,37 @@ export default function AdminBettingGrid({
     if (isPredictionLocked(match)) autoLockCell(match.id, player.id);
   };
 
+  const historyPlayer = players.find((player) => player.id === historyPlayerId) ?? null;
+  const historyRows = historyPlayer
+    ? sortMatchesChronologically(matches).map((match) => {
+      const prediction = getPrediction(match.id, historyPlayer.id);
+      const choice = prediction?.choice ?? 'HOME';
+      const effectivePrediction: Prediction = prediction ?? {
+        matchId: match.id,
+        playerId: historyPlayer.id,
+        competitionId: match.competitionId,
+        choice,
+        timestamp: 'Mặc định chọn chủ nhà',
+        hopeStar: false,
+      };
+      const settlement = getSettlement(match, effectivePrediction);
+      return {
+        match,
+        prediction,
+        choice,
+        selectedTeam: choice === 'AWAY' ? match.awayTeam : match.homeTeam,
+        settlement,
+      };
+    })
+    : [];
+  const historySummary = historyRows.reduce((summary, row) => {
+    if (!row.settlement || row.match.status !== 'FINISHED') return summary;
+    if (row.settlement.status === 'WIN') summary.notLose += 1;
+    else summary.lose += 1;
+    summary.penaltyVnd += row.settlement.penaltyVnd;
+    return summary;
+  }, { notLose: 0, lose: 0, penaltyVnd: 0 });
+
   return (
     <div className="space-y-6 font-sans">
       <section className="space-y-5 border-b border-white/10 pb-6">
@@ -242,9 +274,14 @@ export default function AdminBettingGrid({
               </th>
               {players.map((player) => (
                 <th key={player.id} className="border-r border-b border-white/10 px-1.5 2xl:px-3 py-3">
-                  <span className="block text-center text-[9px] 2xl:text-[10px] font-mono uppercase tracking-wider text-white truncate" title={player.name}>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryPlayerId(player.id)}
+                    className="block w-full text-center text-[9px] 2xl:text-[10px] font-mono uppercase tracking-wider text-white truncate hover:text-brand-primary transition-colors cursor-pointer"
+                    title={`Xem lịch sử chọn của ${player.name}`}
+                  >
                     {player.name}
-                  </span>
+                  </button>
                 </th>
               ))}
             </tr>
@@ -365,6 +402,74 @@ export default function AdminBettingGrid({
           </tbody>
         </table>
       </div>
+
+      {historyPlayer && (
+        <div className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setHistoryPlayerId(null)}>
+          <div className="w-full max-w-4xl max-h-[85vh] overflow-hidden bg-[#0A1622] border border-white/10 rounded-none shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+              <div>
+                <span className="text-[9px] font-mono uppercase tracking-[0.35em] text-brand-primary">Lịch sử chọn</span>
+                <h3 className="text-2xl font-display italic text-white mt-1">{historyPlayer.name}</h3>
+                <div className="mt-2 flex flex-wrap gap-2 text-[9px] font-mono uppercase tracking-widest">
+                  <span className="border border-status-not-lose/40 text-status-not-lose px-2 py-1">NOT LOSE: {historySummary.notLose}</span>
+                  <span className="border border-status-lose/40 text-status-lose px-2 py-1">LOSE: {historySummary.lose}</span>
+                  <span className="border border-white/10 text-text-muted px-2 py-1">Tiền: {formatPenalty(historySummary.penaltyVnd)}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoryPlayerId(null)}
+                className="border border-white/10 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-text-muted hover:text-white hover:border-brand-primary/50 transition-colors"
+              >
+                Đóng
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-auto">
+              <table className="w-full min-w-[720px] table-fixed border-collapse text-left">
+                <thead className="sticky top-0 bg-[#102133] z-10">
+                  <tr className="text-[9px] font-mono uppercase tracking-widest text-brand-primary">
+                    <th className="w-[70px] border-b border-white/10 px-3 py-2">#</th>
+                    <th className="border-b border-white/10 px-3 py-2">Trận</th>
+                    <th className="w-[140px] border-b border-white/10 px-3 py-2">Chọn</th>
+                    <th className="w-[110px] border-b border-white/10 px-3 py-2">Kèo</th>
+                    <th className="w-[120px] border-b border-white/10 px-3 py-2">Kết quả</th>
+                    <th className="w-[110px] border-b border-white/10 px-3 py-2">Tiền</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyRows.map(({ match, prediction, choice, selectedTeam, settlement }, index) => (
+                    <tr key={match.id} className={`text-[10px] font-mono border-b border-white/5 ${resultClass(match.status === 'FINISHED' ? settlement : undefined)}`}>
+                      <td className="px-3 py-2 text-text-muted">#{String(index + 1).padStart(2, '0')}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-bold text-white uppercase tracking-wide truncate" title={`${match.homeTeam} vs ${match.awayTeam}`}>
+                          {match.homeTeam} - {match.awayTeam}
+                        </div>
+                        <div className="text-[8px] text-text-muted uppercase tracking-widest mt-0.5">
+                          {match.date} • {match.status === 'FINISHED' ? `${match.homeGoals ?? 0}-${match.awayGoals ?? 0}` : match.time} • {formatMatchStage(match)}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={choice === 'AWAY' ? 'text-[#ff9e3b] font-black' : 'text-brand-primary font-black'}>
+                          {choice === 'AWAY' ? 'A' : 'H'}
+                        </span>
+                        <span className="text-white"> • {selectedTeam}</span>
+                        {prediction?.hopeStar && <span className="text-yellow-300"> ⭐</span>}
+                        {!prediction && <div className="text-[8px] text-text-muted uppercase tracking-widest">mặc định</div>}
+                      </td>
+                      <td className="px-3 py-2 text-text-muted">{formatHandicap(match.handicap)}</td>
+                      <td className="px-3 py-2 font-black uppercase tracking-wider">
+                        {match.status === 'FINISHED' && settlement ? statusLabel(settlement) : match.status === 'LIVE' ? 'LIVE' : 'SẮP ĐÁ'}
+                      </td>
+                      <td className="px-3 py-2 text-text-muted">{settlement ? formatPenalty(settlement.penaltyVnd) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
