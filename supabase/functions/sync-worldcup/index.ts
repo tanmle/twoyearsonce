@@ -51,6 +51,12 @@ interface FifaSquad {
   isEliminated: boolean;
 }
 
+interface TeamFlag {
+  name_en: string;
+  flag: string;
+  fifa_code: string;
+}
+
 interface MatchForSettlement {
   id: string;
   status: MatchStatus;
@@ -71,6 +77,7 @@ interface PredictionRow {
 const FIFA_ROUNDS_URL = 'https://play.fifa.com/json/fantasy/rounds.json';
 const FIFA_PLAYERS_URL = 'https://play.fifa.com/json/fantasy/players.json';
 const FIFA_SQUADS_URL = 'https://play.fifa.com/json/fantasy/squads.json';
+const TEAM_FLAGS_URL = 'https://worldcup26.ir/get/teams';
 const ODDS_API_URL = 'https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/';
 const VIETNAM_TIME_ZONE = 'Asia/Bangkok';
 const HANDICAP_SYNC_WINDOW_MINUTES_MIN = 45;
@@ -78,7 +85,14 @@ const HANDICAP_SYNC_WINDOW_MINUTES_MAX = 70;
 
 const TEAM_ALIASES: Record<string, string> = {
   bosniaandherzegovina: 'bosniaherzegovina',
-  democraticrepublicofthecongo: 'drcongo',
+  capeverde: 'caboverde',
+  czechrepublic: 'czechia',
+  democraticrepublicofthecongo: 'congodr',
+  drcongo: 'congodr',
+  iran: 'iriran',
+  ivorycoast: 'cotedivoire',
+  southkorea: 'korearepublic',
+  turkey: 'turkiye',
   unitedstates: 'usa',
 };
 
@@ -119,6 +133,24 @@ function teamBadge(abbr: string | undefined, name: string) {
   <text x="32" y="34" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="800" fill="#00F06A">${label}</text>
   <text x="32" y="57" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" font-weight="700" fill="#ffffff">FIFA</text>
 </svg>`);
+}
+
+function buildTeamLogoMap(teams: TeamFlag[]) {
+  const logoMap = new Map<string, string>();
+
+  teams.forEach((team) => {
+    if (!team.flag) return;
+    logoMap.set(normalizeName(team.name_en), team.flag);
+    logoMap.set(team.fifa_code.toUpperCase(), team.flag);
+  });
+
+  return logoMap;
+}
+
+function getTeamLogo(name: string, abbr: string | undefined, logoMap: Map<string, string>) {
+  return (abbr ? logoMap.get(abbr.toUpperCase()) : undefined)
+    ?? logoMap.get(normalizeName(name))
+    ?? teamBadge(abbr, name);
 }
 
 function formatPlayerName(player: FifaPlayer) {
@@ -257,10 +289,11 @@ Deno.serve(async (req) => {
       auth: { persistSession: false },
     });
 
-    const [roundsData, playersData, squadsData, existingMatchesResult] = await Promise.all([
+    const [roundsData, playersData, squadsData, teamFlagsData, existingMatchesResult] = await Promise.all([
       fetchJson<FifaRound[]>(FIFA_ROUNDS_URL),
       fetchJson<FifaPlayer[]>(FIFA_PLAYERS_URL),
       fetchJson<FifaSquad[]>(FIFA_SQUADS_URL),
+      fetchJson<{ teams?: TeamFlag[] }>(TEAM_FLAGS_URL).catch(() => ({ teams: [] })),
       supabase.from('matches').select('id, handicap, handicap_is_manual, odds_updated_at, handicap_synced_at, handicap_sync_attempted_at'),
     ]);
 
@@ -268,6 +301,7 @@ Deno.serve(async (req) => {
 
     const playerNames = buildPlayerNameMap(playersData ?? []);
     const squadGroups = buildSquadGroupMap(squadsData ?? []);
+    const teamLogos = buildTeamLogoMap(teamFlagsData.teams ?? []);
     const existingMatchesById = new Map((existingMatchesResult.data ?? []).map((match) => [match.id, match]));
     const syncedAt = new Date().toISOString();
 
@@ -288,8 +322,8 @@ Deno.serve(async (req) => {
         league: 'WORLD CUP',
         home_team: homeTeam,
         away_team: awayTeam,
-        home_logo: teamBadge(game.homeSquadAbbr, homeTeam),
-        away_logo: teamBadge(game.awaySquadAbbr, awayTeam),
+        home_logo: getTeamLogo(homeTeam, game.homeSquadAbbr, teamLogos),
+        away_logo: getTeamLogo(awayTeam, game.awaySquadAbbr, teamLogos),
         handicap,
         handicap_is_manual: existingMatch?.handicap_is_manual ?? false,
         display_time: status === 'FINISHED' ? 'FINISHED' : formatTimeGmt7(safeFixtureDate),

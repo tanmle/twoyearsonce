@@ -4,6 +4,7 @@ import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 const FIFA_ROUNDS_URL = 'https://play.fifa.com/json/fantasy/rounds.json';
 const FIFA_PLAYERS_URL = 'https://play.fifa.com/json/fantasy/players.json';
 const FIFA_SQUADS_URL = 'https://play.fifa.com/json/fantasy/squads.json';
+const TEAM_FLAGS_URL = 'https://worldcup26.ir/get/teams';
 const ODDS_API_KEY = import.meta.env.VITE_ODDS_API_KEY;
 
 interface FifaRound {
@@ -53,9 +54,22 @@ interface FifaSquad {
   isEliminated: boolean;
 }
 
+interface TeamFlag {
+  name_en: string;
+  flag: string;
+  fifa_code: string;
+}
+
 const TEAM_ALIASES: Record<string, string> = {
   'bosniaandherzegovina': 'bosniaherzegovina',
-  'democraticrepublicofthecongo': 'drcongo',
+  'capeverde': 'caboverde',
+  'czechrepublic': 'czechia',
+  'democraticrepublicofthecongo': 'congodr',
+  'drcongo': 'congodr',
+  'iran': 'iriran',
+  'ivorycoast': 'cotedivoire',
+  'southkorea': 'korearepublic',
+  'turkey': 'turkiye',
   'unitedstates': 'usa',
 };
 
@@ -96,6 +110,24 @@ function teamBadge(abbr: string | undefined, name: string) {
   <text x="32" y="34" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="800" fill="#00F06A">${label.replace(/[<&>]/g, '')}</text>
   <text x="32" y="57" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" font-weight="700" fill="#ffffff">FIFA</text>
 </svg>`);
+}
+
+function buildTeamLogoMap(teams: TeamFlag[]) {
+  const logoMap = new Map<string, string>();
+
+  teams.forEach((team) => {
+    if (!team.flag) return;
+    logoMap.set(normalizeName(team.name_en), team.flag);
+    logoMap.set(team.fifa_code.toUpperCase(), team.flag);
+  });
+
+  return logoMap;
+}
+
+function getTeamLogo(name: string, abbr: string | undefined, logoMap: Map<string, string>) {
+  return (abbr ? logoMap.get(abbr.toUpperCase()) : undefined)
+    ?? logoMap.get(normalizeName(name))
+    ?? teamBadge(abbr, name);
 }
 
 function formatPlayerName(player: FifaPlayer) {
@@ -181,7 +213,7 @@ async function fetchOddsHandicapMap() {
 
 export async function fetchWorldCupMatches(): Promise<Match[]> {
   try {
-    const [roundsData, playersData, squadsData, oddsMap] = await Promise.all([
+    const [roundsData, playersData, squadsData, teamFlagsData, oddsMap] = await Promise.all([
       fetch(FIFA_ROUNDS_URL).then((response) => {
         if (!response.ok) throw new Error(`FIFA rounds fetch failed: ${response.status}`);
         return response.json() as Promise<FifaRound[]>;
@@ -194,11 +226,15 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
         if (!response.ok) throw new Error(`FIFA squads fetch failed: ${response.status}`);
         return response.json() as Promise<FifaSquad[]>;
       }),
+      fetch(TEAM_FLAGS_URL)
+        .then((response) => response.ok ? response.json() as Promise<{ teams?: TeamFlag[] }> : { teams: [] })
+        .catch(() => ({ teams: [] })),
       fetchOddsHandicapMap(),
     ]);
 
     const playerNames = buildPlayerNameMap(playersData ?? []);
     const squadGroups = buildSquadGroupMap(squadsData ?? []);
+    const teamLogos = buildTeamLogoMap(teamFlagsData.teams ?? []);
     const syncedAt = new Date().toISOString();
     const oddsUpdatedAt = oddsMap.size > 0 ? syncedAt : undefined;
 
@@ -217,8 +253,8 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
         league: 'WORLD CUP',
         homeTeam: homeTeamName,
         awayTeam: awayTeamName,
-        homeLogo: teamBadge(game.homeSquadAbbr, homeTeamName),
-        awayLogo: teamBadge(game.awaySquadAbbr, awayTeamName),
+        homeLogo: getTeamLogo(homeTeamName, game.homeSquadAbbr, teamLogos),
+        awayLogo: getTeamLogo(awayTeamName, game.awaySquadAbbr, teamLogos),
         handicap,
         time: status === 'FINISHED' ? 'FINISHED' : formatTimeGmt7(safeFixtureDate),
         date: formatDateGmt7(safeFixtureDate),
