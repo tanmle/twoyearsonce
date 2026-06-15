@@ -1,116 +1,70 @@
 import { Match } from '../types';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 
-// We use the open-source worldcup26.ir API which doesn't require an API key
-const API_BASE_URL = 'https://worldcup26.ir/get';
+const FIFA_ROUNDS_URL = 'https://play.fifa.com/json/fantasy/rounds.json';
+const FIFA_PLAYERS_URL = 'https://play.fifa.com/json/fantasy/players.json';
+const FIFA_SQUADS_URL = 'https://play.fifa.com/json/fantasy/squads.json';
 const ODDS_API_KEY = import.meta.env.VITE_ODDS_API_KEY;
 
-interface WC26Team {
-  id: string;
-  name_en: string;
-  flag: string;
+interface FifaRound {
+  id: number;
+  status: string;
+  startDate: string;
+  endDate: string;
+  tournaments?: FifaTournament[];
 }
 
-interface WC26Game {
-  id: string;
-  home_team_id: string;
-  away_team_id: string;
-  home_team_label: string;
-  away_team_label: string;
-  home_score: string;
-  away_score: string;
-  home_scorers: string;
-  away_scorers: string;
-  local_date: string; // M/D/YYYY HH:mm in stadium local time
-  stadium_id: string;
-  finished: string; // "TRUE" or "FALSE"
-  time_elapsed: string;
-  type: string;
-  group?: string;
+interface FifaTournament {
+  id: number;
+  period: string;
+  minutes: number;
+  extraMinutes: number;
+  venueName: string;
+  venueCity: string;
+  date: string;
+  status: string;
+  isSuspended: boolean;
+  homeSquadId: number;
+  awaySquadId: number;
+  homeSquadName: string;
+  awaySquadName: string;
+  homeSquadAbbr: string;
+  awaySquadAbbr: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  homePenaltyScore: number | null;
+  awayPenaltyScore: number | null;
+  homeGoalScorersAssists: Array<{ playerId: number; assistId: number | null }> | null;
+  awayGoalScorersAssists: Array<{ playerId: number; assistId: number | null }> | null;
 }
 
-interface WC26Stadium {
-  id: string;
-  name_en: string;
-  city_en: string;
-  country_en: string;
-  region: string;
+interface FifaPlayer {
+  id: number;
+  firstName: string | null;
+  lastName: string | null;
+  knownName: string | null;
 }
 
-// Aliases to map worldcup26.ir names to Odds API names
+interface FifaSquad {
+  id: number;
+  name: string;
+  group: string | null;
+  abbr: string;
+  isEliminated: boolean;
+}
+
 const TEAM_ALIASES: Record<string, string> = {
   'bosniaandherzegovina': 'bosniaherzegovina',
   'democraticrepublicofthecongo': 'drcongo',
   'unitedstates': 'usa',
 };
 
-// Helper to normalize team names for robust matching between APIs
 const normalizeName = (name: string) => {
   const clean = name.toLowerCase().replace(/[^a-z]/g, '');
   return TEAM_ALIASES[clean] || clean;
 };
 
 const VIETNAM_TIME_ZONE = 'Asia/Bangkok';
-
-function getStadiumTimeZone(stadium?: WC26Stadium) {
-  if (!stadium) return 'UTC';
-
-  const city = stadium.city_en.toLowerCase();
-  const country = stadium.country_en.toLowerCase();
-
-  if (city.includes('vancouver')) return 'America/Vancouver';
-  if (city.includes('seattle') || city.includes('los angeles') || city.includes('san francisco')) return 'America/Los_Angeles';
-  if (city.includes('toronto')) return 'America/Toronto';
-  if (
-    city.includes('atlanta') ||
-    city.includes('miami') ||
-    city.includes('boston') ||
-    city.includes('philadelphia') ||
-    city.includes('new york') ||
-    city.includes('new jersey')
-  ) return 'America/New_York';
-  if (city.includes('dallas') || city.includes('houston') || city.includes('kansas city')) return 'America/Chicago';
-  if (country.includes('mexico')) return 'America/Mexico_City';
-
-  return 'UTC';
-}
-
-function getTimeZoneOffsetMs(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).formatToParts(date);
-
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  const asUtc = Date.UTC(
-    Number(values.year),
-    Number(values.month) - 1,
-    Number(values.day),
-    Number(values.hour),
-    Number(values.minute),
-    Number(values.second)
-  );
-
-  return asUtc - date.getTime();
-}
-
-function parseApiDateInTimeZone(rawDate: string, timeZone: string) {
-  const match = rawDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/);
-  if (!match) return new Date(rawDate);
-
-  const [, month, day, year, hour, minute] = match;
-  const localAsUtc = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
-  let utcDate = new Date(localAsUtc - getTimeZoneOffsetMs(new Date(localAsUtc), timeZone));
-  utcDate = new Date(localAsUtc - getTimeZoneOffsetMs(utcDate, timeZone));
-
-  return utcDate;
-}
 
 function formatDateGmt7(date: Date) {
   return new Intl.DateTimeFormat('en-GB', {
@@ -130,160 +84,162 @@ function formatTimeGmt7(date: Date) {
   }).format(date);
 }
 
-function parseScorers(raw: string | null | undefined): string[] {
-  if (!raw || raw === 'null') return [];
+function teamBadge(abbr: string | undefined, name: string) {
+  const label = (abbr || name.slice(0, 3) || 'TBD').toUpperCase();
 
-  return raw
-    .replace(/^\{/, '')
-    .replace(/\}$/, '')
-    .split(/","|",|,"/)
-    .map((scorer) => scorer.replace(/^"|"$/g, '').trim())
-    .filter(Boolean);
+  if (!label.trim()) return FALLBACK_TEAM_LOGO;
+
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" fill="#0A1622"/>
+  <circle cx="32" cy="28" r="21" fill="#102133" stroke="#00F06A" stroke-width="3"/>
+  <text x="32" y="34" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="800" fill="#00F06A">${label.replace(/[<&>]/g, '')}</text>
+  <text x="32" y="57" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" font-weight="700" fill="#ffffff">FIFA</text>
+</svg>`);
+}
+
+function formatPlayerName(player: FifaPlayer) {
+  return player.knownName || [player.firstName, player.lastName].filter(Boolean).join(' ') || `#${player.id}`;
+}
+
+function buildPlayerNameMap(players: FifaPlayer[]) {
+  return new Map(players.map((player) => [player.id, formatPlayerName(player)]));
+}
+
+function parseGoalScorers(raw: FifaTournament['homeGoalScorersAssists'], playerNames: Map<number, string>) {
+  return (raw ?? []).map((goal) => playerNames.get(goal.playerId) ?? `#${goal.playerId}`);
+}
+
+function getRoundMatchType(roundId: number) {
+  if (roundId <= 3) return 'group';
+  if (roundId === 4) return 'round_of_32';
+  if (roundId === 5) return 'round16';
+  if (roundId === 6) return 'quarterfinal';
+  if (roundId === 7) return 'semifinal';
+  if (roundId === 8) return 'final';
+  return `round_${roundId}`;
+}
+
+function buildSquadGroupMap(squads: FifaSquad[]) {
+  return new Map(squads.map((squad) => [squad.id, squad.group?.toUpperCase()]));
+}
+
+function getMatchGroup(roundId: number, game: FifaTournament, squadGroups: Map<number, string | undefined>) {
+  if (roundId > 3) return undefined;
+
+  const homeGroup = squadGroups.get(game.homeSquadId);
+  const awayGroup = squadGroups.get(game.awaySquadId);
+
+  if (homeGroup && awayGroup && homeGroup !== awayGroup) return `${homeGroup}/${awayGroup}`;
+  return homeGroup ?? awayGroup;
+}
+
+function mapFifaStatus(game: FifaTournament): 'UPCOMING' | 'LIVE' | 'FINISHED' {
+  if (game.status === 'complete' || game.period === 'full_time') return 'FINISHED';
+  if (game.status === 'playing' || !['scheduled', 'pre_match'].includes(game.period)) return 'LIVE';
+  return 'UPCOMING';
+}
+
+function formatLiveTime(game: FifaTournament) {
+  if (game.period === 'half_time') return 'NGHỈ GIỮA HIỆP';
+  const minutes = Number(game.minutes ?? 0);
+  const extra = Number(game.extraMinutes ?? 0);
+  const clock = minutes > 0 ? `${minutes}${extra > 0 ? `+${extra}` : ''}'` : 'TRỰC TIẾP';
+  return `TRỰC TIẾP ${clock}`;
+}
+
+async function fetchOddsHandicapMap() {
+  const oddsMap = new Map<string, number>();
+  if (!ODDS_API_KEY) return oddsMap;
+
+  try {
+    const oddsUrl = `https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/?apiKey=${ODDS_API_KEY}&regions=eu,us&markets=spreads`;
+    const oddsData = await fetch(oddsUrl).then((response) => response.ok ? response.json() : null);
+
+    if (!Array.isArray(oddsData)) return oddsMap;
+
+    oddsData.forEach((event: any) => {
+      const bookmaker = event.bookmakers?.[0];
+      const spreadsMarket = bookmaker?.markets?.find((market: any) => market.key === 'spreads');
+      const homeOutcome = spreadsMarket?.outcomes?.find((outcome: any) => (
+        normalizeName(outcome.name) === normalizeName(event.home_team)
+      ));
+
+      if (!homeOutcome || typeof homeOutcome.point !== 'number') return;
+
+      const homeKey = normalizeName(event.home_team);
+      const awayKey = normalizeName(event.away_team);
+      oddsMap.set(`${homeKey}_${awayKey}`, homeOutcome.point);
+      oddsMap.set(`${awayKey}_${homeKey}`, -homeOutcome.point);
+    });
+  } catch (error) {
+    console.error('Failed to fetch odds:', error);
+  }
+
+  return oddsMap;
 }
 
 export async function fetchWorldCupMatches(): Promise<Match[]> {
   try {
-    // 1. Fetch Teams to map IDs to Names/Logos
-    const teamsPromise = fetch(`${API_BASE_URL}/teams`).then(r => r.json());
-    
-    // 2. Fetch Games and Stadiums
-    const gamesPromise = fetch(`${API_BASE_URL}/games`).then(r => r.json());
-    const stadiumsPromise = fetch(`${API_BASE_URL}/stadiums`).then(r => r.json());
+    const [roundsData, playersData, squadsData, oddsMap] = await Promise.all([
+      fetch(FIFA_ROUNDS_URL).then((response) => {
+        if (!response.ok) throw new Error(`FIFA rounds fetch failed: ${response.status}`);
+        return response.json() as Promise<FifaRound[]>;
+      }),
+      fetch(FIFA_PLAYERS_URL).then((response) => {
+        if (!response.ok) throw new Error(`FIFA players fetch failed: ${response.status}`);
+        return response.json() as Promise<FifaPlayer[]>;
+      }),
+      fetch(FIFA_SQUADS_URL).then((response) => {
+        if (!response.ok) throw new Error(`FIFA squads fetch failed: ${response.status}`);
+        return response.json() as Promise<FifaSquad[]>;
+      }),
+      fetchOddsHandicapMap(),
+    ]);
 
-    // 3. Fetch Odds (if API key is available)
-    let oddsPromise = Promise.resolve(null);
-    if (ODDS_API_KEY) {
-      const oddsUrl = `https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/?apiKey=${ODDS_API_KEY}&regions=eu,us&markets=spreads`;
-      oddsPromise = fetch(oddsUrl)
-        .then(r => r.ok ? r.json() : null)
-        .catch(err => {
-          console.error("Failed to fetch odds:", err);
-          return null;
-        });
-    }
-
-    // Await all fetches concurrently
-    const [teamsData, gamesData, stadiumsData, oddsData] = await Promise.all([teamsPromise, gamesPromise, stadiumsPromise, oddsPromise]);
-
-    // Parse Teams
-    const teamsList: WC26Team[] = teamsData.teams || [];
-    const teamMap = new Map<string, WC26Team>();
-    teamsList.forEach(team => {
-      teamMap.set(team.id, team);
-    });
-
-    // Parse Games and Stadiums
-    const gamesList: WC26Game[] = gamesData.games || [];
-    const stadiumsList: WC26Stadium[] = stadiumsData.stadiums || [];
-    const stadiumMap = new Map<string, WC26Stadium>();
-    stadiumsList.forEach((stadium) => {
-      stadiumMap.set(stadium.id, stadium);
-    });
-
-    // Parse Odds and map them by match
-    const oddsMap = new Map<string, number>();
-    if (oddsData && Array.isArray(oddsData)) {
-      oddsData.forEach((event: any) => {
-        if (event.bookmakers && event.bookmakers.length > 0) {
-          const bookmaker = event.bookmakers[0]; // Take first available bookmaker
-          const spreadsMarket = bookmaker.markets.find((m: any) => m.key === 'spreads');
-          
-          if (spreadsMarket && spreadsMarket.outcomes) {
-            // Find the outcome that corresponds to the home team
-            const homeOutcome = spreadsMarket.outcomes.find((o: any) => normalizeName(o.name) === normalizeName(event.home_team));
-            
-            if (homeOutcome) {
-              const homeKey = normalizeName(event.home_team);
-              const awayKey = normalizeName(event.away_team);
-              // Store both combinations to ensure robust matching even if teams are swapped
-              oddsMap.set(`${homeKey}_${awayKey}`, homeOutcome.point);
-              oddsMap.set(`${awayKey}_${homeKey}`, -homeOutcome.point);
-            }
-          }
-        }
-      });
-    }
-
+    const playerNames = buildPlayerNameMap(playersData ?? []);
+    const squadGroups = buildSquadGroupMap(squadsData ?? []);
     const syncedAt = new Date().toISOString();
-    const oddsUpdatedAt = oddsData ? syncedAt : undefined;
+    const oddsUpdatedAt = oddsMap.size > 0 ? syncedAt : undefined;
 
-    // 4. Map to our Match interface
-    const matches: Match[] = gamesList.map(apiGame => {
-      const stadium = stadiumMap.get(apiGame.stadium_id);
-      const stadiumTimeZone = getStadiumTimeZone(stadium);
-
-      // Parse API dates as stadium-local time and display them in Vietnam time (GMT+7).
-      let fixtureDate = parseApiDateInTimeZone(apiGame.local_date, stadiumTimeZone);
-      
-      // Fallback if parsing fails
-      if (isNaN(fixtureDate.getTime())) {
-        fixtureDate = new Date();
-      }
-
-      const isFinished = apiGame.finished === "TRUE" || apiGame.time_elapsed === "finished";
-      const isLive = !isFinished && apiGame.time_elapsed !== "notstarted";
-      const isUpcoming = !isFinished && !isLive;
-
-      let status: 'UPCOMING' | 'LIVE' | 'FINISHED' = 'UPCOMING';
-      if (isLive) status = 'LIVE';
-      if (isFinished) status = 'FINISHED';
-
-      // Format date/time in GMT+7.
-      const formattedDate = formatDateGmt7(fixtureDate);
-      const formattedTime = formatTimeGmt7(fixtureDate);
-
-      // Resolve teams (Handle TBD "0" case)
-      const homeTeamObj = teamMap.get(apiGame.home_team_id);
-      const awayTeamObj = teamMap.get(apiGame.away_team_id);
-
-      const homeTeamName = homeTeamObj ? homeTeamObj.name_en : apiGame.home_team_label || 'TBD';
-      const awayTeamName = awayTeamObj ? awayTeamObj.name_en : apiGame.away_team_label || 'TBD';
-      
-      // Default flag for unknown teams
-      const fallbackLogo = FALLBACK_TEAM_LOGO;
-      const homeLogo = homeTeamObj ? homeTeamObj.flag : fallbackLogo;
-      const awayLogo = awayTeamObj ? awayTeamObj.flag : fallbackLogo;
-
-      // Parse scores and scorers
-      const homeGoals = apiGame.home_score && apiGame.home_score !== "null" ? parseInt(apiGame.home_score, 10) : undefined;
-      const awayGoals = apiGame.away_score && apiGame.away_score !== "null" ? parseInt(apiGame.away_score, 10) : undefined;
-      const homeScorers = parseScorers(apiGame.home_scorers);
-      const awayScorers = parseScorers(apiGame.away_scorers);
-
-      // Resolve handicap by cross-referencing oddsMap
+    return (roundsData ?? []).flatMap((round) => (round.tournaments ?? []).map((game) => {
+      const fixtureDate = new Date(game.date);
+      const safeFixtureDate = Number.isNaN(fixtureDate.getTime()) ? new Date() : fixtureDate;
+      const status = mapFifaStatus(game);
+      const homeTeamName = game.homeSquadName || 'TBD';
+      const awayTeamName = game.awaySquadName || 'TBD';
       const matchKey = `${normalizeName(homeTeamName)}_${normalizeName(awayTeamName)}`;
-      const handicap = oddsMap.get(matchKey) || 0.0;
+      const handicap = oddsMap.get(matchKey) ?? 0;
 
       return {
-        id: `wc26_${apiGame.id}`,
-        externalId: apiGame.id,
+        id: `wc26_${game.id}`,
+        externalId: String(game.id),
         league: 'WORLD CUP',
         homeTeam: homeTeamName,
         awayTeam: awayTeamName,
-        homeLogo: homeLogo,
-        awayLogo: awayLogo,
-        handicap: handicap,
-        time: status === 'FINISHED' ? 'FINISHED' : formattedTime,
-        date: formattedDate,
-        kickoffAt: fixtureDate.toISOString(),
-        stadium: stadium?.name_en || 'Sân ' + apiGame.id,
-        status: status,
-        homeGoals: isNaN(homeGoals as any) ? undefined : homeGoals,
-        awayGoals: isNaN(awayGoals as any) ? undefined : awayGoals,
-        homeScorers,
-        awayScorers,
-        liveTimeText: isLive ? `TRỰC TIẾP ${apiGame.time_elapsed}'` : undefined,
+        homeLogo: teamBadge(game.homeSquadAbbr, homeTeamName),
+        awayLogo: teamBadge(game.awaySquadAbbr, awayTeamName),
+        handicap,
+        time: status === 'FINISHED' ? 'FINISHED' : formatTimeGmt7(safeFixtureDate),
+        date: formatDateGmt7(safeFixtureDate),
+        kickoffAt: safeFixtureDate.toISOString(),
+        stadium: [game.venueName, game.venueCity].filter(Boolean).join(' • ') || `Sân ${game.id}`,
+        status,
+        homeGoals: game.homeScore ?? undefined,
+        awayGoals: game.awayScore ?? undefined,
+        homeScorers: parseGoalScorers(game.homeGoalScorersAssists, playerNames),
+        awayScorers: parseGoalScorers(game.awayGoalScorersAssists, playerNames),
+        liveTimeText: status === 'LIVE' ? formatLiveTime(game) : undefined,
         isHot: status === 'LIVE' || status === 'UPCOMING',
         lastSyncedAt: syncedAt,
         oddsUpdatedAt,
-        matchType: apiGame.type,
-        matchGroup: apiGame.group,
+        matchType: getRoundMatchType(round.id),
+        matchGroup: getMatchGroup(round.id, game, squadGroups),
+        competitionId: 'worldcup-2026',
       };
-    });
-
-    return matches;
+    }));
   } catch (error) {
-    console.error("Failed to fetch world cup matches from open source API:", error);
+    console.error('Failed to fetch world cup matches from FIFA rounds API:', error);
     throw error;
   }
 }

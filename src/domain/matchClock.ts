@@ -24,5 +24,5 @@ export function formatLiveMatchTimestamp(match: Match) {
   if (!liveClock) return null;
 
   const syncedAt = formatMatchLastSyncedAt(match);
-  return syncedAt ? `${liveClock} • cập nhật ${syncedAt}` : liveClock;
+  return liveClock;
 }
