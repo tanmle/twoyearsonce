@@ -191,6 +191,9 @@ export default function Dashboard({
                         <Flame className="w-3.5 h-3.5 text-brand-primary animate-pulse" />
                         {matchHeaderLabel}
                       </span>
+                       <span className="font-mono text-[9px] text-text-muted bg-white/5 px-2 py-1 uppercase tracking-widest border border-white/5">
+                        {match.time} • {match.date}
+                      </span>
                     </div>
 
                     {/* Scoreboard Body */}
