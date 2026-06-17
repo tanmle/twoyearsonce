@@ -663,7 +663,8 @@ export default function App() {
 
       if (isSupabaseConfigured) {
         try {
-          await invokeWorldCupSync();
+          const syncResult = await invokeWorldCupSync();
+          console.info('World Cup edge sync result', syncResult);
           const [remotePlayers, remoteMatches, remotePredictions, remoteSettlements, remoteActivities] = await Promise.all([
             fetchPlayersFromSupabase(),
             fetchMatchesFromSupabase(),
@@ -682,7 +683,7 @@ export default function App() {
           setActivities(remoteActivities);
           return;
         } catch (error) {
-          console.warn('Edge sync failed, falling back to browser sync', error);
+          console.warn('Edge sync failed, falling back to browser sync. Browser fallback cannot cache flags in Supabase Storage.', error);
         }
       }
 

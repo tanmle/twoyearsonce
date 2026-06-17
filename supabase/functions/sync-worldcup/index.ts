@@ -254,6 +254,21 @@ function getStoredFlagPublicUrl(supabase: any, path: string) {
   return supabase.storage.from(TEAM_FLAGS_BUCKET).getPublicUrl(path).data.publicUrl as string;
 }
 
+async function ensureTeamFlagsBucket(supabase: any) {
+  const { data: bucket } = await supabase.storage.getBucket(TEAM_FLAGS_BUCKET);
+  if (bucket) return;
+
+  const { error } = await supabase.storage.createBucket(TEAM_FLAGS_BUCKET, {
+    public: true,
+    fileSizeLimit: 1048576,
+    allowedMimeTypes: ['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp'],
+  });
+
+  if (error && !String(error.message ?? error).toLowerCase().includes('already exists')) {
+    throw error;
+  }
+}
+
 async function cacheTeamFlag(supabase: any, team: TeamFlag): Promise<TeamFlag> {
   if (!team.flag || team.flag.startsWith('data:')) return team;
 
@@ -278,7 +293,7 @@ async function cacheTeamFlag(supabase: any, team: TeamFlag): Promise<TeamFlag> {
     if (!response.ok) throw new Error(`Flag fetch failed ${response.status}: ${team.flag}`);
 
     const body = await response.arrayBuffer();
-    const contentType = response.headers.get('content-type') || getFlagContentType(extension);
+    const contentType = getFlagContentType(extension);
     const { error: uploadError } = await supabase.storage
       .from(TEAM_FLAGS_BUCKET)
       .upload(path, body, { contentType, upsert: true, cacheControl: '31536000' });
@@ -292,6 +307,7 @@ async function cacheTeamFlag(supabase: any, team: TeamFlag): Promise<TeamFlag> {
 }
 
 async function cacheTeamFlags(supabase: any, teams: TeamFlag[]) {
+  await ensureTeamFlagsBucket(supabase);
   return Promise.all(teams.map((team) => cacheTeamFlag(supabase, team)));
 }
 
@@ -472,14 +488,17 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
   return results;
 }
 
-async function fetchMatchDetailsByFantasyMatchNumber(syncedAt: string) {
+async function fetchMatchDetailsByFantasyMatchNumber(syncedAt: string, targetMatchNumbers: Set<number>) {
   const detailsByMatchNumber = new Map<number, MatchDetailPayload>();
+  if (targetMatchNumbers.size === 0) return detailsByMatchNumber;
 
   try {
     const calendarData = await fetchFifaApiJson<{ Results?: FifaCalendarMatch[] }>(FIFA_CALENDAR_URL);
-    const calendarMatches = (calendarData.Results ?? []).filter((match) => match.MatchNumber !== undefined);
+    const calendarMatches = (calendarData.Results ?? []).filter((match) => (
+      match.MatchNumber !== undefined && targetMatchNumbers.has(match.MatchNumber)
+    ));
 
-    await mapWithConcurrency(calendarMatches, 6, async (calendarMatch) => {
+    await mapWithConcurrency(calendarMatches, 4, async (calendarMatch) => {
       if (calendarMatch.MatchNumber === undefined) return;
 
       try {
@@ -595,7 +614,12 @@ Deno.serve(async (req) => {
     const teamLogos = buildTeamLogoMap(cachedTeamFlags);
     const existingMatchesById = new Map((existingMatchesResult.data ?? []).map((match) => [match.id, match]));
     const syncedAt = new Date().toISOString();
-    const matchDetailsByNumber = await fetchMatchDetailsByFantasyMatchNumber(syncedAt);
+    const detailTargetMatchNumbers = new Set<number>();
+    (roundsData ?? []).forEach((round) => (round.tournaments ?? []).forEach((game) => {
+      const hasGoal = Number(game.homeScore ?? 0) + Number(game.awayScore ?? 0) > 0;
+      if (hasGoal || mapFifaStatus(game) === 'LIVE') detailTargetMatchNumbers.add(game.id);
+    }));
+    const matchDetailsByNumber = await fetchMatchDetailsByFantasyMatchNumber(syncedAt, detailTargetMatchNumbers);
 
     const matches = (roundsData ?? []).flatMap((round) => (round.tournaments ?? []).map((game) => {
       const fixtureDate = new Date(game.date);
@@ -734,10 +758,14 @@ Deno.serve(async (req) => {
     const matchesWithGoalEventsCount = matches.filter((match) => (
       (match.home_goal_events?.length ?? 0) + (match.away_goal_events?.length ?? 0) > 0
     )).length;
+    const cachedFlagsCount = matches.filter((match) => (
+      String(match.home_logo).includes('/storage/v1/object/public/team-flags/') ||
+      String(match.away_logo).includes('/storage/v1/object/public/team-flags/')
+    )).length;
     const { error: activityError } = await supabase.from('activities').insert({
       player_name: 'Hệ thống',
       action_text: 'đã đồng bộ dữ liệu trận đấu từ FIFA rounds.json',
-      target_text: `${matches.length} trận • ${liveMatchesCount} live • ${finishedMatches.length} đã xong • ${matchesWithGoalEventsCount} có phút bàn thắng`,
+      target_text: `${matches.length} trận • ${liveMatchesCount} live • ${finishedMatches.length} đã xong • ${matchesWithGoalEventsCount} có phút bàn thắng • ${cachedFlagsCount} có cờ cache`,
       type: 'join_prediction',
       competition_id: 'worldcup-2026',
       created_at: syncedAt,
@@ -755,6 +783,8 @@ Deno.serve(async (req) => {
       handicapsUpdated,
       matchesWithGoalEvents: matchesWithGoalEventsCount,
       detailMatches: matchDetailsByNumber.size,
+      detailTargets: detailTargetMatchNumbers.size,
+      cachedFlagMatches: cachedFlagsCount,
       syncedAt,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

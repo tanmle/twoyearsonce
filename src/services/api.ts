@@ -323,14 +323,18 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
   return results;
 }
 
-async function fetchMatchDetailsByFantasyMatchNumber(syncedAt: string) {
+async function fetchMatchDetailsByFantasyMatchNumber(syncedAt: string, targetMatchNumbers: Set<number>) {
   const detailsByMatchNumber = new Map<number, MatchDetailPayload>();
+  if (targetMatchNumbers.size === 0) return detailsByMatchNumber;
+
   try {
     const calendarData = await fetch(FIFA_CALENDAR_URL, { headers: { Accept: 'application/json' } })
       .then((response) => response.ok ? response.json() as Promise<{ Results?: FifaCalendarMatch[] }> : { Results: [] });
-    const calendarMatches = (calendarData.Results ?? []).filter((match) => match.MatchNumber !== undefined);
+    const calendarMatches = (calendarData.Results ?? []).filter((match) => (
+      match.MatchNumber !== undefined && targetMatchNumbers.has(match.MatchNumber)
+    ));
 
-    await mapWithConcurrency(calendarMatches, 6, async (calendarMatch) => {
+    await mapWithConcurrency(calendarMatches, 4, async (calendarMatch) => {
       if (calendarMatch.MatchNumber === undefined) return;
       try {
         const detailUrl = `${FIFA_LIVE_MATCH_URL_PREFIX}/${calendarMatch.IdCompetition}/${calendarMatch.IdSeason}/${calendarMatch.IdStage}/${calendarMatch.IdMatch}?language=en`;
@@ -415,7 +419,12 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
     const squadGroups = buildSquadGroupMap(squadsData ?? []);
     const teamLogos = buildTeamLogoMap(teamFlagsData.teams ?? []);
     const syncedAt = new Date().toISOString();
-    const matchDetailsByNumber = await fetchMatchDetailsByFantasyMatchNumber(syncedAt);
+    const detailTargetMatchNumbers = new Set<number>();
+    (roundsData ?? []).forEach((round) => (round.tournaments ?? []).forEach((game) => {
+      const hasGoal = Number(game.homeScore ?? 0) + Number(game.awayScore ?? 0) > 0;
+      if (hasGoal || mapFifaStatus(game) === 'LIVE') detailTargetMatchNumbers.add(game.id);
+    }));
+    const matchDetailsByNumber = await fetchMatchDetailsByFantasyMatchNumber(syncedAt, detailTargetMatchNumbers);
     const oddsUpdatedAt = oddsMap.size > 0 ? syncedAt : undefined;
 
     return (roundsData ?? []).flatMap((round) => (round.tournaments ?? []).map((game) => {
