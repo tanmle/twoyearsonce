@@ -26,6 +26,30 @@ export interface Player {
 
 export type League = 'PREMIER LEAGUE' | 'LA LIGA' | 'CHAMPIONS LEAGUE' | 'SERIE A' | 'WORLD CUP' | 'EURO';
 
+export interface GoalEvent {
+  playerId?: string;
+  playerName: string;
+  minute?: number;
+  stoppageMinute?: number;
+  label?: string;
+  type?: 'goal' | 'penalty' | 'own_goal';
+}
+
+export interface MatchDetailsInfo {
+  fifaMatchCentreUrl?: string;
+  fifaMatchId?: string;
+  tournamentName?: string;
+  seasonName?: string;
+  stageName?: string;
+  groupName?: string;
+  matchNumber?: number;
+  venueName?: string;
+  venueCity?: string;
+  attendance?: number;
+  referee?: string;
+  lastDetailSyncedAt?: string;
+}
+
 export interface Match {
   id: string;
   league: League;
@@ -44,6 +68,9 @@ export interface Match {
   awayGoals?: number;
   homeScorers?: string[];
   awayScorers?: string[];
+  homeGoalEvents?: GoalEvent[];
+  awayGoalEvents?: GoalEvent[];
+  details?: MatchDetailsInfo;
   liveTimeText?: string; // e.g. "LIVE 67'", "LIVE IN 2H 45M"
   isHot?: boolean;
   externalId?: string;

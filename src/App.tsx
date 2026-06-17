@@ -691,9 +691,16 @@ export default function App() {
       const syncedMatches = apiMatches.map((apiMatch) => {
         const existingMatch = existingMatchesById.get(apiMatch.id);
 
+        const preservedMatchDetails = {
+          homeGoalEvents: apiMatch.homeGoalEvents?.length ? apiMatch.homeGoalEvents : existingMatch?.homeGoalEvents,
+          awayGoalEvents: apiMatch.awayGoalEvents?.length ? apiMatch.awayGoalEvents : existingMatch?.awayGoalEvents,
+          details: apiMatch.details && Object.keys(apiMatch.details).length > 0 ? apiMatch.details : existingMatch?.details,
+        };
+
         if (existingMatch?.handicapIsManual) {
           return {
             ...apiMatch,
+            ...preservedMatchDetails,
             homeLogo: preserveCachedTeamFlagLogo(existingMatch.homeLogo, apiMatch.homeLogo),
             awayLogo: preserveCachedTeamFlagLogo(existingMatch.awayLogo, apiMatch.awayLogo),
             handicap: existingMatch.handicap,
@@ -710,6 +717,7 @@ export default function App() {
         if (shouldPreserveExistingHandicap) {
           return {
             ...apiMatch,
+            ...preservedMatchDetails,
             homeLogo: preserveCachedTeamFlagLogo(existingMatch.homeLogo, apiMatch.homeLogo),
             awayLogo: preserveCachedTeamFlagLogo(existingMatch.awayLogo, apiMatch.awayLogo),
             handicap: existingMatch.handicap,
@@ -720,6 +728,7 @@ export default function App() {
 
         return {
           ...apiMatch,
+          ...preservedMatchDetails,
           homeLogo: preserveCachedTeamFlagLogo(existingMatch?.homeLogo, apiMatch.homeLogo),
           awayLogo: preserveCachedTeamFlagLogo(existingMatch?.awayLogo, apiMatch.awayLogo),
           handicapIsManual: false,

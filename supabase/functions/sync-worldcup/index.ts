@@ -57,6 +57,85 @@ interface TeamFlag {
   fifa_code: string;
 }
 
+interface GoalEvent {
+  playerId?: string;
+  playerName: string;
+  minute?: number;
+  stoppageMinute?: number;
+  label?: string;
+  type?: 'goal' | 'penalty' | 'own_goal';
+}
+
+interface MatchDetailsInfo {
+  fifaMatchCentreUrl?: string;
+  fifaMatchId?: string;
+  tournamentName?: string;
+  seasonName?: string;
+  stageName?: string;
+  groupName?: string;
+  matchNumber?: number;
+  venueName?: string;
+  venueCity?: string;
+  attendance?: number;
+  referee?: string;
+  lastDetailSyncedAt?: string;
+}
+
+interface FifaLocalizedText {
+  Locale: string;
+  Description: string;
+}
+
+interface FifaCalendarMatch {
+  IdCompetition: string;
+  IdSeason: string;
+  IdStage: string;
+  IdGroup?: string;
+  IdMatch: string;
+  MatchNumber?: number;
+}
+
+interface FifaLiveGoal {
+  Type?: number;
+  IdPlayer?: string;
+  Minute?: string;
+}
+
+interface FifaLivePlayer {
+  IdPlayer: string;
+  PlayerName?: FifaLocalizedText[];
+  ShortName?: FifaLocalizedText[];
+}
+
+interface FifaLiveTeam {
+  Goals?: FifaLiveGoal[];
+  Players?: FifaLivePlayer[];
+}
+
+interface FifaLiveMatch {
+  IdCompetition: string;
+  IdSeason: string;
+  IdStage: string;
+  IdGroup?: string;
+  IdMatch: string;
+  CompetitionName?: FifaLocalizedText[];
+  SeasonName?: FifaLocalizedText[];
+  StageName?: FifaLocalizedText[];
+  GroupName?: FifaLocalizedText[];
+  Stadium?: { Name?: FifaLocalizedText[]; CityName?: FifaLocalizedText[] };
+  Attendance?: string | number | null;
+  Officials?: Array<{ Name?: FifaLocalizedText[]; NameShort?: FifaLocalizedText[]; OfficialType?: number; TypeLocalized?: FifaLocalizedText[] }>;
+  MatchNumber?: number;
+  HomeTeam?: FifaLiveTeam;
+  AwayTeam?: FifaLiveTeam;
+}
+
+interface MatchDetailPayload {
+  homeGoalEvents: GoalEvent[];
+  awayGoalEvents: GoalEvent[];
+  details: MatchDetailsInfo;
+}
+
 interface MatchForSettlement {
   id: string;
   status: MatchStatus;
@@ -79,6 +158,9 @@ const FIFA_PLAYERS_URL = 'https://play.fifa.com/json/fantasy/players.json';
 const FIFA_SQUADS_URL = 'https://play.fifa.com/json/fantasy/squads.json';
 const TEAM_FLAGS_URL = 'https://worldcup26.ir/get/teams';
 const ODDS_API_URL = 'https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/';
+const FIFA_CALENDAR_URL = 'https://api.fifa.com/api/v3/calendar/matches?language=en&count=500&idCompetition=17&idSeason=285023';
+const FIFA_LIVE_MATCH_URL_PREFIX = 'https://api.fifa.com/api/v3/live/football';
+const FIFA_MATCH_CENTRE_URL_PREFIX = 'https://www.fifa.com/en/match-centre/match';
 const TEAM_FLAGS_BUCKET = 'team-flags';
 const TEAM_FLAGS_PATH_PREFIX = 'worldcup-2026';
 const VIETNAM_TIME_ZONE = 'Asia/Bangkok';
@@ -278,9 +360,151 @@ function isInHandicapSyncWindow(kickoffAt: string, now: Date) {
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'Mozilla/5.0',
+    },
+  });
   if (!response.ok) throw new Error(`Fetch failed ${response.status}: ${url}`);
   return response.json();
+}
+
+async function fetchFifaApiJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'Mozilla/5.0',
+    },
+  });
+  if (!response.ok) throw new Error(`FIFA detail fetch failed ${response.status}: ${url}`);
+  return response.json();
+}
+
+function localizedText(value: FifaLocalizedText[] | undefined) {
+  return value?.find((item) => item.Locale === 'en-GB')?.Description
+    ?? value?.[0]?.Description;
+}
+
+function parseGoalMinute(label: string | undefined) {
+  if (!label) return {};
+
+  const [minutePart, stoppagePart] = label.replace(/'/g, '').split('+');
+  const minute = Number(minutePart);
+  const stoppageMinute = stoppagePart === undefined ? undefined : Number(stoppagePart);
+
+  return {
+    minute: Number.isFinite(minute) ? minute : undefined,
+    stoppageMinute: Number.isFinite(stoppageMinute) ? stoppageMinute : undefined,
+  };
+}
+
+function mapGoalType(type: number | undefined): GoalEvent['type'] {
+  if (type === 1) return 'penalty';
+  if (type === 3) return 'own_goal';
+  return 'goal';
+}
+
+function buildPlayerMap(team: FifaLiveTeam | undefined) {
+  return new Map((team?.Players ?? []).map((player) => [
+    player.IdPlayer,
+    localizedText(player.ShortName) ?? localizedText(player.PlayerName) ?? `#${player.IdPlayer}`,
+  ]));
+}
+
+function mapGoalEvents(team: FifaLiveTeam | undefined) {
+  const playerNames = buildPlayerMap(team);
+
+  return (team?.Goals ?? []).map((goal) => ({
+    playerId: goal.IdPlayer,
+    playerName: goal.IdPlayer ? playerNames.get(goal.IdPlayer) ?? `#${goal.IdPlayer}` : 'Unknown scorer',
+    label: goal.Minute,
+    ...parseGoalMinute(goal.Minute),
+    type: mapGoalType(goal.Type),
+  }));
+}
+
+function findReferee(officials: FifaLiveMatch['Officials']) {
+  const referee = officials?.find((official) => (
+    official.OfficialType === 1 || localizedText(official.TypeLocalized)?.toLowerCase() === 'referee'
+  ));
+
+  return localizedText(referee?.Name) ?? localizedText(referee?.NameShort);
+}
+
+function buildFifaMatchCentreUrl(match: FifaLiveMatch | FifaCalendarMatch) {
+  return `${FIFA_MATCH_CENTRE_URL_PREFIX}/${match.IdCompetition}/${match.IdSeason}/${match.IdStage}/${match.IdMatch}`;
+}
+
+function mapMatchDetails(detail: FifaLiveMatch, syncedAt: string): MatchDetailPayload {
+  return {
+    homeGoalEvents: mapGoalEvents(detail.HomeTeam),
+    awayGoalEvents: mapGoalEvents(detail.AwayTeam),
+    details: {
+      fifaMatchCentreUrl: buildFifaMatchCentreUrl(detail),
+      fifaMatchId: detail.IdMatch,
+      tournamentName: localizedText(detail.CompetitionName),
+      seasonName: localizedText(detail.SeasonName),
+      stageName: localizedText(detail.StageName),
+      groupName: localizedText(detail.GroupName),
+      matchNumber: detail.MatchNumber,
+      venueName: localizedText(detail.Stadium?.Name),
+      venueCity: localizedText(detail.Stadium?.CityName),
+      attendance: detail.Attendance === null || detail.Attendance === undefined ? undefined : Number(detail.Attendance),
+      referee: findReferee(detail.Officials),
+      lastDetailSyncedAt: syncedAt,
+    },
+  };
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item: T) => Promise<R>) {
+  const results: R[] = [];
+  let nextIndex = 0;
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex]);
+    }
+  }));
+
+  return results;
+}
+
+async function fetchMatchDetailsByFantasyMatchNumber(syncedAt: string) {
+  const detailsByMatchNumber = new Map<number, MatchDetailPayload>();
+
+  try {
+    const calendarData = await fetchFifaApiJson<{ Results?: FifaCalendarMatch[] }>(FIFA_CALENDAR_URL);
+    const calendarMatches = (calendarData.Results ?? []).filter((match) => match.MatchNumber !== undefined);
+
+    await mapWithConcurrency(calendarMatches, 6, async (calendarMatch) => {
+      if (calendarMatch.MatchNumber === undefined) return;
+
+      try {
+        const detailUrl = `${FIFA_LIVE_MATCH_URL_PREFIX}/${calendarMatch.IdCompetition}/${calendarMatch.IdSeason}/${calendarMatch.IdStage}/${calendarMatch.IdMatch}?language=en`;
+        const detail = await fetchFifaApiJson<FifaLiveMatch>(detailUrl);
+        detailsByMatchNumber.set(calendarMatch.MatchNumber, mapMatchDetails(detail, syncedAt));
+      } catch (error) {
+        detailsByMatchNumber.set(calendarMatch.MatchNumber, {
+          homeGoalEvents: [],
+          awayGoalEvents: [],
+          details: {
+            fifaMatchCentreUrl: buildFifaMatchCentreUrl(calendarMatch),
+            fifaMatchId: calendarMatch.IdMatch,
+            matchNumber: calendarMatch.MatchNumber,
+            lastDetailSyncedAt: syncedAt,
+          },
+        });
+        console.warn(`Failed to fetch FIFA details for match ${calendarMatch.IdMatch}:`, error);
+      }
+    });
+  } catch (error) {
+    console.warn('Failed to fetch FIFA match detail index:', error);
+  }
+
+  return detailsByMatchNumber;
 }
 
 async function fetchOddsHandicapMap(oddsApiKey: string) {
@@ -360,7 +584,7 @@ Deno.serve(async (req) => {
       fetchJson<FifaPlayer[]>(FIFA_PLAYERS_URL),
       fetchJson<FifaSquad[]>(FIFA_SQUADS_URL),
       fetchJson<{ teams?: TeamFlag[] }>(TEAM_FLAGS_URL).catch(() => ({ teams: [] })),
-      supabase.from('matches').select('id, handicap, handicap_is_manual, odds_updated_at, handicap_synced_at, handicap_sync_attempted_at'),
+      supabase.from('matches').select('id, handicap, handicap_is_manual, odds_updated_at, handicap_synced_at, handicap_sync_attempted_at, home_goal_events, away_goal_events, match_details'),
     ]);
 
     if (existingMatchesResult.error) throw existingMatchesResult.error;
@@ -371,6 +595,7 @@ Deno.serve(async (req) => {
     const teamLogos = buildTeamLogoMap(cachedTeamFlags);
     const existingMatchesById = new Map((existingMatchesResult.data ?? []).map((match) => [match.id, match]));
     const syncedAt = new Date().toISOString();
+    const matchDetailsByNumber = await fetchMatchDetailsByFantasyMatchNumber(syncedAt);
 
     const matches = (roundsData ?? []).flatMap((round) => (round.tournaments ?? []).map((game) => {
       const fixtureDate = new Date(game.date);
@@ -381,6 +606,7 @@ Deno.serve(async (req) => {
       const handicap = Number(existingMatch?.handicap ?? 0);
       const homeTeam = game.homeSquadName || 'TBD';
       const awayTeam = game.awaySquadName || 'TBD';
+      const matchDetail = matchDetailsByNumber.get(game.id);
 
       return {
         id: matchId,
@@ -402,6 +628,9 @@ Deno.serve(async (req) => {
         away_goals: game.awayScore,
         home_scorers: parseGoalScorers(game.homeGoalScorersAssists, playerNames),
         away_scorers: parseGoalScorers(game.awayGoalScorersAssists, playerNames),
+        home_goal_events: matchDetail?.homeGoalEvents ?? existingMatch?.home_goal_events ?? [],
+        away_goal_events: matchDetail?.awayGoalEvents ?? existingMatch?.away_goal_events ?? [],
+        match_details: matchDetail?.details ?? existingMatch?.match_details ?? {},
         live_time_text: status === 'LIVE' ? formatLiveTime(game) : null,
         is_hot: status === 'LIVE' || status === 'UPCOMING',
         last_synced_at: syncedAt,
@@ -502,10 +731,13 @@ Deno.serve(async (req) => {
     }
 
     const liveMatchesCount = matches.filter((match) => match.status === 'LIVE').length;
+    const matchesWithGoalEventsCount = matches.filter((match) => (
+      (match.home_goal_events?.length ?? 0) + (match.away_goal_events?.length ?? 0) > 0
+    )).length;
     const { error: activityError } = await supabase.from('activities').insert({
       player_name: 'Hệ thống',
       action_text: 'đã đồng bộ dữ liệu trận đấu từ FIFA rounds.json',
-      target_text: `${matches.length} trận • ${liveMatchesCount} live • ${finishedMatches.length} đã xong`,
+      target_text: `${matches.length} trận • ${liveMatchesCount} live • ${finishedMatches.length} đã xong • ${matchesWithGoalEventsCount} có phút bàn thắng`,
       type: 'join_prediction',
       competition_id: 'worldcup-2026',
       created_at: syncedAt,
@@ -521,6 +753,8 @@ Deno.serve(async (req) => {
       handicapEligibleMatches: handicapEligibleMatches.length,
       oddsApiCalled,
       handicapsUpdated,
+      matchesWithGoalEvents: matchesWithGoalEventsCount,
+      detailMatches: matchDetailsByNumber.size,
       syncedAt,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

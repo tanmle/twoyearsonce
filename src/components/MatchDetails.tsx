@@ -14,6 +14,35 @@ interface MatchDetailsProps {
   onClose: () => void;
 }
 
+function goalEventSuffix(type: string | undefined) {
+  if (type === 'penalty') return ' (P)';
+  if (type === 'own_goal') return ' (OG)';
+  return '';
+}
+
+function renderGoalLabel(event: { label?: string; minute?: number; stoppageMinute?: number }) {
+  if (event.label) return event.label;
+  if (event.minute === undefined) return undefined;
+  return event.stoppageMinute ? `${event.minute}+${event.stoppageMinute}'` : `${event.minute}'`;
+}
+
+function renderScorerFallback(scorer: string) {
+  return <div key={scorer}>⚽ {scorer}</div>;
+}
+
+function renderGoalEvent(event: NonNullable<Match['homeGoalEvents']>[number], index: number) {
+  const minute = renderGoalLabel(event);
+  return (
+    <div key={`${event.playerName}-${minute ?? index}`}>
+      ⚽ {minute ? `${minute} ` : ''}{event.playerName}{goalEventSuffix(event.type)}
+    </div>
+  );
+}
+
+function formatNumber(value: number | undefined) {
+  return value === undefined || Number.isNaN(value) ? undefined : new Intl.NumberFormat('vi-VN').format(value);
+}
+
 export default function MatchDetails({
   currentPlayer,
   players,
@@ -57,6 +86,20 @@ export default function MatchDetails({
   const outcomeStatus = userSettlement?.status === 'SETTLE_PENDING' || !userSettlement ? 'CHỜ' : userSettlement.status;
   const penaltyVndAccrued = userSettlement?.penaltyVnd ?? 0;
   const statusLabel = match.status === 'FINISHED' ? 'ĐÃ KẾT THÚC' : match.status === 'LIVE' ? 'ĐANG ĐÁ' : 'SẮP DIỄN RA';
+  const homeGoalEvents = match.homeGoalEvents ?? [];
+  const awayGoalEvents = match.awayGoalEvents ?? [];
+  const detailsRows = [
+    ['Kì đấu', match.details?.seasonName ?? match.details?.tournamentName],
+    ['Vòng', match.details?.stageName],
+    ['Bảng', match.details?.groupName ?? match.matchGroup],
+    ['Mã trận FIFA', match.details?.fifaMatchId],
+    ['Số trận', match.details?.matchNumber ? `#${match.details.matchNumber}` : undefined],
+    ['Sân', match.details?.venueName ?? match.stadium],
+    ['Thành phố', match.details?.venueCity],
+    ['Trọng tài', match.details?.referee],
+    ['Khán giả', formatNumber(match.details?.attendance)],
+    ['Đồng bộ chi tiết', match.details?.lastDetailSyncedAt ? new Date(match.details.lastDetailSyncedAt).toLocaleString('vi-VN') : undefined],
+  ].filter(([, value]) => Boolean(value));
 
   return (
     <div className="space-y-8 font-sans">
@@ -100,11 +143,11 @@ export default function MatchDetails({
             </div>
             <h2 className="font-sans font-black text-[11px] sm:text-xl text-white uppercase tracking-wider truncate max-w-full">{match.homeTeam}</h2>
             <span className="hidden sm:block text-[8px] font-mono text-text-muted mt-1 uppercase tracking-widest font-bold select-none">CHỦ NHÀ</span>
-            {match.homeScorers && match.homeScorers.length > 0 && (
+            {((homeGoalEvents.length > 0) || (match.homeScorers && match.homeScorers.length > 0)) && (
               <div className="mt-2 space-y-1 text-[9px] font-mono text-brand-primary text-center md:text-right">
-                {match.homeScorers.map((scorer) => (
-                  <div key={scorer}>⚽ {scorer}</div>
-                ))}
+                {homeGoalEvents.length > 0
+                  ? homeGoalEvents.map(renderGoalEvent)
+                  : match.homeScorers?.map(renderScorerFallback)}
               </div>
             )}
           </div>
@@ -151,11 +194,11 @@ export default function MatchDetails({
             </div>
             <h2 className="font-sans font-black text-[11px] sm:text-xl text-white uppercase tracking-wider truncate max-w-full">{match.awayTeam}</h2>
             <span className="hidden sm:block text-[8px] font-mono text-text-muted mt-1 uppercase tracking-widest font-bold select-none">ĐỘI KHÁCH</span>
-            {match.awayScorers && match.awayScorers.length > 0 && (
+            {((awayGoalEvents.length > 0) || (match.awayScorers && match.awayScorers.length > 0)) && (
               <div className="mt-2 space-y-1 text-[9px] font-mono text-brand-primary text-center md:text-left">
-                {match.awayScorers.map((scorer) => (
-                  <div key={scorer}>⚽ {scorer}</div>
-                ))}
+                {awayGoalEvents.length > 0
+                  ? awayGoalEvents.map(renderGoalEvent)
+                  : match.awayScorers?.map(renderScorerFallback)}
               </div>
             )}
           </div>
@@ -392,6 +435,36 @@ export default function MatchDetails({
         </div>
 
       </section>
+
+      {(detailsRows.length > 0 || match.details?.fifaMatchCentreUrl) && (
+        <section className="bg-[#0A1622] border border-white/10 rounded-none p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <h3 className="font-display italic font-bold text-lg text-white flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-brand-primary" />
+              thông tin trận từ FIFA
+            </h3>
+            {match.details?.fifaMatchCentreUrl && (
+              <a
+                href={match.details.fifaMatchCentreUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[9px] font-mono uppercase tracking-widest text-brand-primary border border-brand-primary/30 px-3 py-1 hover:bg-brand-primary hover:text-black transition-colors"
+              >
+                Match Centre
+              </a>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {detailsRows.map(([label, value]) => (
+              <div key={label} className="bg-[#040D17] border border-white/5 p-3">
+                <div className="text-[8px] font-mono text-text-muted uppercase tracking-widest font-bold">{label}</div>
+                <div className="mt-1 text-[11px] text-white font-semibold">{value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

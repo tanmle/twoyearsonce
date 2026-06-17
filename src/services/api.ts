@@ -1,10 +1,13 @@
-import { Match } from '../types';
+import { GoalEvent, Match, MatchDetailsInfo } from '../types';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 
 const FIFA_ROUNDS_URL = 'https://play.fifa.com/json/fantasy/rounds.json';
 const FIFA_PLAYERS_URL = 'https://play.fifa.com/json/fantasy/players.json';
 const FIFA_SQUADS_URL = 'https://play.fifa.com/json/fantasy/squads.json';
 const TEAM_FLAGS_URL = 'https://worldcup26.ir/get/teams';
+const FIFA_CALENDAR_URL = 'https://api.fifa.com/api/v3/calendar/matches?language=en&count=500&idCompetition=17&idSeason=285023';
+const FIFA_LIVE_MATCH_URL_PREFIX = 'https://api.fifa.com/api/v3/live/football';
+const FIFA_MATCH_CENTRE_URL_PREFIX = 'https://www.fifa.com/en/match-centre/match';
 const ODDS_API_KEY = import.meta.env.VITE_ODDS_API_KEY;
 
 interface FifaRound {
@@ -58,6 +61,61 @@ interface TeamFlag {
   name_en: string;
   flag: string;
   fifa_code: string;
+}
+
+interface FifaLocalizedText {
+  Locale: string;
+  Description: string;
+}
+
+interface FifaCalendarMatch {
+  IdCompetition: string;
+  IdSeason: string;
+  IdStage: string;
+  IdGroup?: string;
+  IdMatch: string;
+  MatchNumber?: number;
+}
+
+interface FifaLiveGoal {
+  Type?: number;
+  IdPlayer?: string;
+  Minute?: string;
+}
+
+interface FifaLivePlayer {
+  IdPlayer: string;
+  PlayerName?: FifaLocalizedText[];
+  ShortName?: FifaLocalizedText[];
+}
+
+interface FifaLiveTeam {
+  Goals?: FifaLiveGoal[];
+  Players?: FifaLivePlayer[];
+}
+
+interface FifaLiveMatch {
+  IdCompetition: string;
+  IdSeason: string;
+  IdStage: string;
+  IdGroup?: string;
+  IdMatch: string;
+  CompetitionName?: FifaLocalizedText[];
+  SeasonName?: FifaLocalizedText[];
+  StageName?: FifaLocalizedText[];
+  GroupName?: FifaLocalizedText[];
+  Stadium?: { Name?: FifaLocalizedText[]; CityName?: FifaLocalizedText[] };
+  Attendance?: string | number | null;
+  Officials?: Array<{ Name?: FifaLocalizedText[]; NameShort?: FifaLocalizedText[]; OfficialType?: number; TypeLocalized?: FifaLocalizedText[] }>;
+  MatchNumber?: number;
+  HomeTeam?: FifaLiveTeam;
+  AwayTeam?: FifaLiveTeam;
+}
+
+interface MatchDetailPayload {
+  homeGoalEvents: GoalEvent[];
+  awayGoalEvents: GoalEvent[];
+  details: MatchDetailsInfo;
 }
 
 const TEAM_ALIASES: Record<string, string> = {
@@ -180,6 +238,127 @@ function formatLiveTime(game: FifaTournament) {
   return `TRỰC TIẾP ${clock}`;
 }
 
+function localizedText(value: FifaLocalizedText[] | undefined) {
+  return value?.find((item) => item.Locale === 'en-GB')?.Description
+    ?? value?.[0]?.Description;
+}
+
+function parseGoalMinute(label: string | undefined) {
+  if (!label) return {};
+  const [minutePart, stoppagePart] = label.replace(/'/g, '').split('+');
+  const minute = Number(minutePart);
+  const stoppageMinute = stoppagePart === undefined ? undefined : Number(stoppagePart);
+  return {
+    minute: Number.isFinite(minute) ? minute : undefined,
+    stoppageMinute: Number.isFinite(stoppageMinute) ? stoppageMinute : undefined,
+  };
+}
+
+function mapGoalType(type: number | undefined): GoalEvent['type'] {
+  if (type === 1) return 'penalty';
+  if (type === 3) return 'own_goal';
+  return 'goal';
+}
+
+function buildPlayerMap(team: FifaLiveTeam | undefined) {
+  return new Map((team?.Players ?? []).map((player) => [
+    player.IdPlayer,
+    localizedText(player.ShortName) ?? localizedText(player.PlayerName) ?? `#${player.IdPlayer}`,
+  ]));
+}
+
+function mapGoalEvents(team: FifaLiveTeam | undefined) {
+  const playerNames = buildPlayerMap(team);
+  return (team?.Goals ?? []).map((goal) => ({
+    playerId: goal.IdPlayer,
+    playerName: goal.IdPlayer ? playerNames.get(goal.IdPlayer) ?? `#${goal.IdPlayer}` : 'Unknown scorer',
+    label: goal.Minute,
+    ...parseGoalMinute(goal.Minute),
+    type: mapGoalType(goal.Type),
+  }));
+}
+
+function findReferee(officials: FifaLiveMatch['Officials']) {
+  const referee = officials?.find((official) => (
+    official.OfficialType === 1 || localizedText(official.TypeLocalized)?.toLowerCase() === 'referee'
+  ));
+  return localizedText(referee?.Name) ?? localizedText(referee?.NameShort);
+}
+
+function buildFifaMatchCentreUrl(match: FifaLiveMatch | FifaCalendarMatch) {
+  return `${FIFA_MATCH_CENTRE_URL_PREFIX}/${match.IdCompetition}/${match.IdSeason}/${match.IdStage}/${match.IdMatch}`;
+}
+
+function mapMatchDetails(detail: FifaLiveMatch, syncedAt: string): MatchDetailPayload {
+  return {
+    homeGoalEvents: mapGoalEvents(detail.HomeTeam),
+    awayGoalEvents: mapGoalEvents(detail.AwayTeam),
+    details: {
+      fifaMatchCentreUrl: buildFifaMatchCentreUrl(detail),
+      fifaMatchId: detail.IdMatch,
+      tournamentName: localizedText(detail.CompetitionName),
+      seasonName: localizedText(detail.SeasonName),
+      stageName: localizedText(detail.StageName),
+      groupName: localizedText(detail.GroupName),
+      matchNumber: detail.MatchNumber,
+      venueName: localizedText(detail.Stadium?.Name),
+      venueCity: localizedText(detail.Stadium?.CityName),
+      attendance: detail.Attendance === null || detail.Attendance === undefined ? undefined : Number(detail.Attendance),
+      referee: findReferee(detail.Officials),
+      lastDetailSyncedAt: syncedAt,
+    },
+  };
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item: T) => Promise<R>) {
+  const results: R[] = [];
+  let nextIndex = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex]);
+    }
+  }));
+  return results;
+}
+
+async function fetchMatchDetailsByFantasyMatchNumber(syncedAt: string) {
+  const detailsByMatchNumber = new Map<number, MatchDetailPayload>();
+  try {
+    const calendarData = await fetch(FIFA_CALENDAR_URL, { headers: { Accept: 'application/json' } })
+      .then((response) => response.ok ? response.json() as Promise<{ Results?: FifaCalendarMatch[] }> : { Results: [] });
+    const calendarMatches = (calendarData.Results ?? []).filter((match) => match.MatchNumber !== undefined);
+
+    await mapWithConcurrency(calendarMatches, 6, async (calendarMatch) => {
+      if (calendarMatch.MatchNumber === undefined) return;
+      try {
+        const detailUrl = `${FIFA_LIVE_MATCH_URL_PREFIX}/${calendarMatch.IdCompetition}/${calendarMatch.IdSeason}/${calendarMatch.IdStage}/${calendarMatch.IdMatch}?language=en`;
+        const detail = await fetch(detailUrl, { headers: { Accept: 'application/json' } }).then((response) => {
+          if (!response.ok) throw new Error(`FIFA detail fetch failed: ${response.status}`);
+          return response.json() as Promise<FifaLiveMatch>;
+        });
+        detailsByMatchNumber.set(calendarMatch.MatchNumber, mapMatchDetails(detail, syncedAt));
+      } catch (error) {
+        detailsByMatchNumber.set(calendarMatch.MatchNumber, {
+          homeGoalEvents: [],
+          awayGoalEvents: [],
+          details: {
+            fifaMatchCentreUrl: buildFifaMatchCentreUrl(calendarMatch),
+            fifaMatchId: calendarMatch.IdMatch,
+            matchNumber: calendarMatch.MatchNumber,
+            lastDetailSyncedAt: syncedAt,
+          },
+        });
+        console.warn(`Failed to fetch FIFA details for match ${calendarMatch.IdMatch}:`, error);
+      }
+    });
+  } catch (error) {
+    console.warn('Failed to fetch FIFA match detail index:', error);
+  }
+  return detailsByMatchNumber;
+}
+
 async function fetchOddsHandicapMap() {
   const oddsMap = new Map<string, number>();
   if (!ODDS_API_KEY) return oddsMap;
@@ -236,6 +415,7 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
     const squadGroups = buildSquadGroupMap(squadsData ?? []);
     const teamLogos = buildTeamLogoMap(teamFlagsData.teams ?? []);
     const syncedAt = new Date().toISOString();
+    const matchDetailsByNumber = await fetchMatchDetailsByFantasyMatchNumber(syncedAt);
     const oddsUpdatedAt = oddsMap.size > 0 ? syncedAt : undefined;
 
     return (roundsData ?? []).flatMap((round) => (round.tournaments ?? []).map((game) => {
@@ -246,6 +426,7 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
       const awayTeamName = game.awaySquadName || 'TBD';
       const matchKey = `${normalizeName(homeTeamName)}_${normalizeName(awayTeamName)}`;
       const handicap = oddsMap.get(matchKey) ?? 0;
+      const matchDetail = matchDetailsByNumber.get(game.id);
 
       return {
         id: `wc26_${game.id}`,
@@ -265,6 +446,9 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
         awayGoals: game.awayScore ?? undefined,
         homeScorers: parseGoalScorers(game.homeGoalScorersAssists, playerNames),
         awayScorers: parseGoalScorers(game.awayGoalScorersAssists, playerNames),
+        homeGoalEvents: matchDetail?.homeGoalEvents ?? [],
+        awayGoalEvents: matchDetail?.awayGoalEvents ?? [],
+        details: matchDetail?.details,
         liveTimeText: status === 'LIVE' ? formatLiveTime(game) : undefined,
         isHot: status === 'LIVE' || status === 'UPCOMING',
         lastSyncedAt: syncedAt,

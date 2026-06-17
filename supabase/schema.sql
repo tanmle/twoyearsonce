@@ -49,6 +49,9 @@ create table if not exists public.matches (
   away_goals integer,
   home_scorers text[] not null default '{}',
   away_scorers text[] not null default '{}',
+  home_goal_events jsonb not null default '[]',
+  away_goal_events jsonb not null default '[]',
+  match_details jsonb not null default '{}',
   live_time_text text,
   is_hot boolean not null default false,
   last_synced_at timestamptz not null default now(),
@@ -72,6 +75,9 @@ alter table public.matches
 alter table public.matches
   add column if not exists home_scorers text[] not null default '{}',
   add column if not exists away_scorers text[] not null default '{}',
+  add column if not exists home_goal_events jsonb not null default '[]',
+  add column if not exists away_goal_events jsonb not null default '[]',
+  add column if not exists match_details jsonb not null default '{}',
   add column if not exists match_type text,
   add column if not exists match_group text;
 
