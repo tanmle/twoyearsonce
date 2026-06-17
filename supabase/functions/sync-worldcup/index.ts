@@ -79,6 +79,8 @@ const FIFA_PLAYERS_URL = 'https://play.fifa.com/json/fantasy/players.json';
 const FIFA_SQUADS_URL = 'https://play.fifa.com/json/fantasy/squads.json';
 const TEAM_FLAGS_URL = 'https://worldcup26.ir/get/teams';
 const ODDS_API_URL = 'https://api.the-odds-api.com/v4/sports/soccer_fifa_world_cup/odds/';
+const TEAM_FLAGS_BUCKET = 'team-flags';
+const TEAM_FLAGS_PATH_PREFIX = 'worldcup-2026';
 const VIETNAM_TIME_ZONE = 'Asia/Bangkok';
 const HANDICAP_SYNC_WINDOW_MINUTES_MIN = 45;
 const HANDICAP_SYNC_WINDOW_MINUTES_MAX = 70;
@@ -145,6 +147,70 @@ function buildTeamLogoMap(teams: TeamFlag[]) {
   });
 
   return logoMap;
+}
+
+function getFlagFileExtension(flagUrl: string) {
+  try {
+    const pathname = new URL(flagUrl).pathname.toLowerCase();
+    const extension = pathname.split('.').pop();
+    if (extension && ['svg', 'png', 'jpg', 'jpeg', 'webp'].includes(extension)) return extension;
+  } catch {
+    // Fall through to the default extension.
+  }
+
+  return 'svg';
+}
+
+function getFlagContentType(extension: string) {
+  if (extension === 'png') return 'image/png';
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  if (extension === 'webp') return 'image/webp';
+  return 'image/svg+xml';
+}
+
+function getStoredFlagPublicUrl(supabase: any, path: string) {
+  return supabase.storage.from(TEAM_FLAGS_BUCKET).getPublicUrl(path).data.publicUrl as string;
+}
+
+async function cacheTeamFlag(supabase: any, team: TeamFlag): Promise<TeamFlag> {
+  if (!team.flag || team.flag.startsWith('data:')) return team;
+
+  const code = (team.fifa_code || normalizeName(team.name_en)).toLowerCase();
+  if (!code) return team;
+
+  const extension = getFlagFileExtension(team.flag);
+  const fileName = `${code}.${extension}`;
+  const path = `${TEAM_FLAGS_PATH_PREFIX}/${fileName}`;
+  const publicUrl = getStoredFlagPublicUrl(supabase, path);
+
+  try {
+    const { data: existingFiles, error: listError } = await supabase.storage
+      .from(TEAM_FLAGS_BUCKET)
+      .list(TEAM_FLAGS_PATH_PREFIX, { limit: 1, search: fileName });
+
+    if (!listError && existingFiles?.some((file: { name: string }) => file.name === fileName)) {
+      return { ...team, flag: publicUrl };
+    }
+
+    const response = await fetch(team.flag);
+    if (!response.ok) throw new Error(`Flag fetch failed ${response.status}: ${team.flag}`);
+
+    const body = await response.arrayBuffer();
+    const contentType = response.headers.get('content-type') || getFlagContentType(extension);
+    const { error: uploadError } = await supabase.storage
+      .from(TEAM_FLAGS_BUCKET)
+      .upload(path, body, { contentType, upsert: true, cacheControl: '31536000' });
+
+    if (uploadError) throw uploadError;
+    return { ...team, flag: publicUrl };
+  } catch (error) {
+    console.warn(`Failed to cache flag for ${team.name_en}:`, error);
+    return team;
+  }
+}
+
+async function cacheTeamFlags(supabase: any, teams: TeamFlag[]) {
+  return Promise.all(teams.map((team) => cacheTeamFlag(supabase, team)));
 }
 
 function getTeamLogo(name: string, abbr: string | undefined, logoMap: Map<string, string>) {
@@ -301,7 +367,8 @@ Deno.serve(async (req) => {
 
     const playerNames = buildPlayerNameMap(playersData ?? []);
     const squadGroups = buildSquadGroupMap(squadsData ?? []);
-    const teamLogos = buildTeamLogoMap(teamFlagsData.teams ?? []);
+    const cachedTeamFlags = await cacheTeamFlags(supabase, teamFlagsData.teams ?? []);
+    const teamLogos = buildTeamLogoMap(cachedTeamFlags);
     const existingMatchesById = new Map((existingMatchesResult.data ?? []).map((match) => [match.id, match]));
     const syncedAt = new Date().toISOString();
 

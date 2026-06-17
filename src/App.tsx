@@ -76,6 +76,14 @@ function buildDefaultHomePredictions(
   return defaults;
 }
 
+function isCachedTeamFlagLogo(logo: string | undefined) {
+  return Boolean(logo?.includes('/storage/v1/object/public/team-flags/'));
+}
+
+function preserveCachedTeamFlagLogo(existingLogo: string | undefined, nextLogo: string) {
+  return isCachedTeamFlagLogo(existingLogo) ? existingLogo! : nextLogo;
+}
+
 function createPlayerId(name: string, existingIds: string[]) {
   const base = name
     .normalize('NFD')
@@ -686,6 +694,8 @@ export default function App() {
         if (existingMatch?.handicapIsManual) {
           return {
             ...apiMatch,
+            homeLogo: preserveCachedTeamFlagLogo(existingMatch.homeLogo, apiMatch.homeLogo),
+            awayLogo: preserveCachedTeamFlagLogo(existingMatch.awayLogo, apiMatch.awayLogo),
             handicap: existingMatch.handicap,
             handicapIsManual: true,
             oddsUpdatedAt: existingMatch.oddsUpdatedAt,
@@ -700,6 +710,8 @@ export default function App() {
         if (shouldPreserveExistingHandicap) {
           return {
             ...apiMatch,
+            homeLogo: preserveCachedTeamFlagLogo(existingMatch.homeLogo, apiMatch.homeLogo),
+            awayLogo: preserveCachedTeamFlagLogo(existingMatch.awayLogo, apiMatch.awayLogo),
             handicap: existingMatch.handicap,
             handicapIsManual: false,
             oddsUpdatedAt: existingMatch.oddsUpdatedAt,
@@ -708,6 +720,8 @@ export default function App() {
 
         return {
           ...apiMatch,
+          homeLogo: preserveCachedTeamFlagLogo(existingMatch?.homeLogo, apiMatch.homeLogo),
+          awayLogo: preserveCachedTeamFlagLogo(existingMatch?.awayLogo, apiMatch.awayLogo),
           handicapIsManual: false,
         };
       });

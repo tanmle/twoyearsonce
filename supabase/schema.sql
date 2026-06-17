@@ -122,6 +122,19 @@ create table if not exists public.activities (
 alter table public.activities
   add column if not exists competition_id text references public.competitions(id) default 'worldcup-2026';
 
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'team-flags',
+  'team-flags',
+  true,
+  1048576,
+  array['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp']
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
 alter table public.competitions enable row level security;
 alter table public.players enable row level security;
 alter table public.matches enable row level security;
@@ -145,6 +158,7 @@ drop policy if exists "public update predictions" on public.predictions;
 drop policy if exists "public write settlements" on public.settlements;
 drop policy if exists "public update settlements" on public.settlements;
 drop policy if exists "public write activities" on public.activities;
+drop policy if exists "public read team flags" on storage.objects;
 
 create policy "public read competitions" on public.competitions for select using (true);
 create policy "public read players" on public.players for select using (true);
@@ -152,6 +166,7 @@ create policy "public read matches" on public.matches for select using (true);
 create policy "public read predictions" on public.predictions for select using (true);
 create policy "public read settlements" on public.settlements for select using (true);
 create policy "public read activities" on public.activities for select using (true);
+create policy "public read team flags" on storage.objects for select using (bucket_id = 'team-flags');
 
 -- Prototype writes. Tighten once auth/player ownership is implemented.
 create policy "public write players" on public.players for insert with check (true);
