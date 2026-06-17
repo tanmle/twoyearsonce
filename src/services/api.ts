@@ -5,6 +5,7 @@ const FIFA_ROUNDS_URL = 'https://play.fifa.com/json/fantasy/rounds.json';
 const FIFA_PLAYERS_URL = 'https://play.fifa.com/json/fantasy/players.json';
 const FIFA_SQUADS_URL = 'https://play.fifa.com/json/fantasy/squads.json';
 const TEAM_FLAGS_URL = 'https://worldcup26.ir/get/teams';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const FIFA_CALENDAR_URL = 'https://api.fifa.com/api/v3/calendar/matches?language=en&count=500&idCompetition=17&idSeason=285023';
 const FIFA_LIVE_MATCH_URL_PREFIX = 'https://api.fifa.com/api/v3/live/football';
 const FIFA_MATCH_CENTRE_URL_PREFIX = 'https://www.fifa.com/en/match-centre/match';
@@ -182,8 +183,14 @@ function buildTeamLogoMap(teams: TeamFlag[]) {
   return logoMap;
 }
 
+function getCachedTeamFlagUrl(abbr: string | undefined) {
+  if (!SUPABASE_URL || !abbr) return undefined;
+  return `${SUPABASE_URL}/storage/v1/object/public/team-flags/worldcup-2026/${abbr.toLowerCase()}.svg`;
+}
+
 function getTeamLogo(name: string, abbr: string | undefined, logoMap: Map<string, string>) {
-  return (abbr ? logoMap.get(abbr.toUpperCase()) : undefined)
+  return getCachedTeamFlagUrl(abbr)
+    ?? (abbr ? logoMap.get(abbr.toUpperCase()) : undefined)
     ?? logoMap.get(normalizeName(name))
     ?? teamBadge(abbr, name);
 }
@@ -409,9 +416,11 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
         if (!response.ok) throw new Error(`FIFA squads fetch failed: ${response.status}`);
         return response.json() as Promise<FifaSquad[]>;
       }),
-      fetch(TEAM_FLAGS_URL)
-        .then((response) => response.ok ? response.json() as Promise<{ teams?: TeamFlag[] }> : { teams: [] })
-        .catch(() => ({ teams: [] })),
+      SUPABASE_URL
+        ? Promise.resolve({ teams: [] })
+        : fetch(TEAM_FLAGS_URL)
+          .then((response) => response.ok ? response.json() as Promise<{ teams?: TeamFlag[] }> : { teams: [] })
+          .catch(() => ({ teams: [] })),
       fetchOddsHandicapMap(),
     ]);
 

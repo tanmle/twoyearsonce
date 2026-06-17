@@ -254,6 +254,28 @@ function getStoredFlagPublicUrl(supabase: any, path: string) {
   return supabase.storage.from(TEAM_FLAGS_BUCKET).getPublicUrl(path).data.publicUrl as string;
 }
 
+async function listCachedTeamFlags(supabase: any) {
+  const cachedFlags = new Map<string, string>();
+
+  try {
+    const { data: files, error } = await supabase.storage
+      .from(TEAM_FLAGS_BUCKET)
+      .list(TEAM_FLAGS_PATH_PREFIX, { limit: 1000 });
+
+    if (error) throw error;
+
+    (files ?? []).forEach((file: { name: string }) => {
+      const code = file.name.split('.')[0]?.toUpperCase();
+      if (!code) return;
+      cachedFlags.set(code, getStoredFlagPublicUrl(supabase, `${TEAM_FLAGS_PATH_PREFIX}/${file.name}`));
+    });
+  } catch (error) {
+    console.warn('Failed to list cached team flags:', error);
+  }
+
+  return cachedFlags;
+}
+
 async function ensureTeamFlagsBucket(supabase: any) {
   const { data: bucket } = await supabase.storage.getBucket(TEAM_FLAGS_BUCKET);
   if (bucket) return;
@@ -269,26 +291,21 @@ async function ensureTeamFlagsBucket(supabase: any) {
   }
 }
 
-async function cacheTeamFlag(supabase: any, team: TeamFlag): Promise<TeamFlag> {
+async function cacheTeamFlag(supabase: any, team: TeamFlag, cachedFlags: Map<string, string>): Promise<TeamFlag> {
   if (!team.flag || team.flag.startsWith('data:')) return team;
 
-  const code = (team.fifa_code || normalizeName(team.name_en)).toLowerCase();
-  if (!code) return team;
+  const normalizedCode = (team.fifa_code || normalizeName(team.name_en)).toUpperCase();
+  if (!normalizedCode) return team;
+
+  const cachedFlag = cachedFlags.get(normalizedCode);
+  if (cachedFlag) return { ...team, flag: cachedFlag };
 
   const extension = getFlagFileExtension(team.flag);
-  const fileName = `${code}.${extension}`;
+  const fileName = `${normalizedCode.toLowerCase()}.${extension}`;
   const path = `${TEAM_FLAGS_PATH_PREFIX}/${fileName}`;
   const publicUrl = getStoredFlagPublicUrl(supabase, path);
 
   try {
-    const { data: existingFiles, error: listError } = await supabase.storage
-      .from(TEAM_FLAGS_BUCKET)
-      .list(TEAM_FLAGS_PATH_PREFIX, { limit: 1, search: fileName });
-
-    if (!listError && existingFiles?.some((file: { name: string }) => file.name === fileName)) {
-      return { ...team, flag: publicUrl };
-    }
-
     const response = await fetch(team.flag);
     if (!response.ok) throw new Error(`Flag fetch failed ${response.status}: ${team.flag}`);
 
@@ -299,6 +316,7 @@ async function cacheTeamFlag(supabase: any, team: TeamFlag): Promise<TeamFlag> {
       .upload(path, body, { contentType, upsert: true, cacheControl: '31536000' });
 
     if (uploadError) throw uploadError;
+    cachedFlags.set(normalizedCode, publicUrl);
     return { ...team, flag: publicUrl };
   } catch (error) {
     console.warn(`Failed to cache flag for ${team.name_en}:`, error);
@@ -306,9 +324,9 @@ async function cacheTeamFlag(supabase: any, team: TeamFlag): Promise<TeamFlag> {
   }
 }
 
-async function cacheTeamFlags(supabase: any, teams: TeamFlag[]) {
+async function cacheTeamFlags(supabase: any, teams: TeamFlag[], cachedFlags: Map<string, string>) {
   await ensureTeamFlagsBucket(supabase);
-  return Promise.all(teams.map((team) => cacheTeamFlag(supabase, team)));
+  return Promise.all(teams.map((team) => cacheTeamFlag(supabase, team, cachedFlags)));
 }
 
 function getTeamLogo(name: string, abbr: string | undefined, logoMap: Map<string, string>) {
@@ -598,11 +616,10 @@ Deno.serve(async (req) => {
       auth: { persistSession: false },
     });
 
-    const [roundsData, playersData, squadsData, teamFlagsData, existingMatchesResult] = await Promise.all([
+    const [roundsData, playersData, squadsData, existingMatchesResult] = await Promise.all([
       fetchJson<FifaRound[]>(FIFA_ROUNDS_URL),
       fetchJson<FifaPlayer[]>(FIFA_PLAYERS_URL),
       fetchJson<FifaSquad[]>(FIFA_SQUADS_URL),
-      fetchJson<{ teams?: TeamFlag[] }>(TEAM_FLAGS_URL).catch(() => ({ teams: [] })),
       supabase.from('matches').select('id, handicap, handicap_is_manual, odds_updated_at, handicap_synced_at, handicap_sync_attempted_at, home_goal_events, away_goal_events, match_details'),
     ]);
 
@@ -610,8 +627,14 @@ Deno.serve(async (req) => {
 
     const playerNames = buildPlayerNameMap(playersData ?? []);
     const squadGroups = buildSquadGroupMap(squadsData ?? []);
-    const cachedTeamFlags = await cacheTeamFlags(supabase, teamFlagsData.teams ?? []);
+    await ensureTeamFlagsBucket(supabase);
+    const cachedFlagsByCode = await listCachedTeamFlags(supabase);
+    const teamFlagsData = cachedFlagsByCode.size > 0
+      ? { teams: [] as TeamFlag[] }
+      : await fetchJson<{ teams?: TeamFlag[] }>(TEAM_FLAGS_URL).catch(() => ({ teams: [] }));
+    const cachedTeamFlags = await cacheTeamFlags(supabase, teamFlagsData.teams ?? [], cachedFlagsByCode);
     const teamLogos = buildTeamLogoMap(cachedTeamFlags);
+    cachedFlagsByCode.forEach((flagUrl, code) => teamLogos.set(code, flagUrl));
     const existingMatchesById = new Map((existingMatchesResult.data ?? []).map((match) => [match.id, match]));
     const syncedAt = new Date().toISOString();
     const detailTargetMatchNumbers = new Set<number>();
