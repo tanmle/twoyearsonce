@@ -50,6 +50,94 @@ export interface MatchDetailsInfo {
   lastDetailSyncedAt?: string;
 }
 
+export interface HistoryMatch {
+  matchId?: string;
+  date: string; // ISO
+  competition?: string;
+  stageName?: string;
+  groupName?: string;
+  stadium?: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeFlag?: string;
+  awayFlag?: string;
+  homeScore?: number;
+  awayScore?: number;
+  homePens?: number;
+  awayPens?: number;
+  penaltyText?: string; // e.g. "Czechia thắng 3-1 luân lưu"
+}
+
+export interface FormEntry {
+  match: HistoryMatch;
+  outcome: 'W' | 'D' | 'L';
+  isHome: boolean;
+}
+
+export interface LineupPlayer {
+  id?: string;
+  name: string;
+  shirtNumber?: number;
+  position: 'GK' | 'DF' | 'MF' | 'FW' | '';
+  positionOrder: number;
+  isCaptain: boolean;
+  card?: 'yellow' | 'red';
+  photoUrl?: string;
+  subOff?: { minute?: string; playerName: string; playerNumber?: number };
+  subOnMinute?: string;
+}
+
+export interface SubstitutionEvent {
+  playerOff: string;
+  playerOn: string;
+  minute?: string;
+}
+
+export interface TeamLineup {
+  formation?: string;
+  coach?: string;
+  starters: LineupPlayer[];
+  bench: LineupPlayer[];
+  substitutions: SubstitutionEvent[];
+}
+
+export interface PowerRankingLeader {
+  category: 'attacking' | 'creativity' | 'defending';
+  playerName: string;
+  teamName?: string;
+  teamFlag?: string;
+  photoUrl?: string;
+  score: number;
+}
+
+export interface StatRow {
+  label: string;
+  home: number;
+  away: number;
+}
+
+export interface StatGroup {
+  title: string;
+  rows: StatRow[];
+}
+
+export interface MatchStats {
+  homePossession: number; // 0-100
+  awayPossession: number; // 0-100
+  contestPossession: number; // 0-100
+  groups: StatGroup[];
+}
+
+export interface MatchInsights {
+  headToHead: HistoryMatch[];
+  homeForm: FormEntry[];
+  awayForm: FormEntry[];
+  homeLineup?: TeamLineup;
+  awayLineup?: TeamLineup;
+  powerRanking: PowerRankingLeader[];
+  stats?: MatchStats;
+}
+
 export interface Match {
   id: string;
   league: League;

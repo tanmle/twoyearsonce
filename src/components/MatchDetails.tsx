@@ -1,10 +1,12 @@
-import { Player, Match, Prediction } from '../types';
-import { Calendar, CheckCircle2, XCircle, Users, BarChart3, Minimize2, MapPin, Trophy, Clock } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Player, Match, Prediction, MatchInsights, HistoryMatch, FormEntry, TeamLineup, LineupPlayer, PowerRankingLeader, MatchStats } from '../types';
+import { Calendar, CheckCircle2, XCircle, Users, BarChart3, Minimize2, MapPin, Trophy, Clock, History, Swords, Shirt, Zap, Activity } from 'lucide-react';
 import { formatHandicap } from '../domain/handicap';
 import { settlePrediction } from '../domain/settlement';
 import { FALLBACK_TEAM_LOGO } from '../domain/teamLogo';
 import { formatBeerUnits } from '../domain/beerUnits';
 import { formatLiveMatchTimestamp } from '../domain/matchClock';
+import { fetchMatchInsights } from '../services/matchHistory';
 
 interface MatchDetailsProps {
   currentPlayer: Player;
@@ -43,6 +45,299 @@ function formatNumber(value: number | undefined) {
   return value === undefined || Number.isNaN(value) ? undefined : new Intl.NumberFormat('vi-VN').format(value);
 }
 
+function formatHistoryDate(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
+}
+
+const FORM_BADGE_STYLES: Record<FormEntry['outcome'], string> = {
+  W: 'bg-status-not-lose/15 text-status-not-lose border-status-not-lose/40',
+  D: 'bg-white/10 text-white/70 border-white/20',
+  L: 'bg-status-lose/15 text-status-lose border-status-lose/40',
+};
+
+const FORM_BADGE_LABEL: Record<FormEntry['outcome'], string> = { W: 'T', D: 'H', L: 'B' };
+
+function HistoryTeamCell({ name, flag, alignRight }: { name: string; flag?: string; alignRight?: boolean }) {
+  return (
+    <div className={`flex items-center gap-2 min-w-0 ${alignRight ? 'flex-row-reverse text-right' : ''}`}>
+      <img
+        src={flag || FALLBACK_TEAM_LOGO}
+        alt={name}
+        onError={(event) => { event.currentTarget.src = FALLBACK_TEAM_LOGO; }}
+        className="w-5 h-4 object-cover border border-white/10 shrink-0"
+      />
+      <span className="text-[11px] text-white font-semibold truncate">{name}</span>
+    </div>
+  );
+}
+
+function HistoryRow({ item }: { item: HistoryMatch }) {
+  const meta = [item.stageName, item.groupName, formatHistoryDate(item.date), item.stadium].filter(Boolean).join(' • ');
+  return (
+    <div className="bg-[#040D17] border border-white/5 p-3 hover:border-white/15 transition-colors">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+        <HistoryTeamCell name={item.homeTeam} flag={item.homeFlag} alignRight />
+        <div className="font-mono font-black text-sm text-white whitespace-nowrap px-2">
+          {item.homeScore ?? '-'} <span className="text-white/30">:</span> {item.awayScore ?? '-'}
+        </div>
+        <HistoryTeamCell name={item.awayTeam} flag={item.awayFlag} />
+      </div>
+      {(meta || item.penaltyText) && (
+        <div className="mt-2 text-center text-[8px] font-mono uppercase tracking-widest text-text-muted">
+          {meta}
+          {item.penaltyText && <span className="text-brand-primary"> • {item.penaltyText}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FormColumn({ teamName, teamFlag, form }: { teamName: string; teamFlag?: string; form: FormEntry[] }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <img
+            src={teamFlag || FALLBACK_TEAM_LOGO}
+            alt={teamName}
+            onError={(event) => { event.currentTarget.src = FALLBACK_TEAM_LOGO; }}
+            className="w-6 h-5 object-cover border border-white/10"
+          />
+          <span className="font-sans font-black text-[11px] uppercase tracking-wider text-white truncate">{teamName}</span>
+        </div>
+        <div className="flex gap-1 shrink-0">
+          {form.length === 0 ? (
+            <span className="text-[9px] font-mono text-text-muted uppercase">—</span>
+          ) : (
+            form.map((entry, index) => (
+              <span
+                key={entry.match.matchId ?? index}
+                className={`w-5 h-5 flex items-center justify-center rounded-full border font-mono text-[9px] font-black ${FORM_BADGE_STYLES[entry.outcome]}`}
+                title={`${entry.match.homeTeam} ${entry.match.homeScore ?? '-'}-${entry.match.awayScore ?? '-'} ${entry.match.awayTeam}`}
+              >
+                {FORM_BADGE_LABEL[entry.outcome]}
+              </span>
+            ))
+          )}
+        </div>
+      </div>
+      <div className="space-y-2">
+        {form.map((entry, index) => (
+          <HistoryRow key={entry.match.matchId ?? index} item={entry.match} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const POSITION_GROUPS: Array<{ key: LineupPlayer['position']; label: string }> = [
+  { key: 'GK', label: 'Thủ môn' },
+  { key: 'DF', label: 'Hậu vệ' },
+  { key: 'MF', label: 'Tiền vệ' },
+  { key: 'FW', label: 'Tiền đạo' },
+];
+
+function PlayerAvatar({ player }: { player: LineupPlayer }) {
+  if (player.photoUrl) {
+    return (
+      <img
+        src={player.photoUrl}
+        alt={player.name}
+        onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
+        className="w-9 h-9 rounded-full object-cover object-top bg-[#102133] border border-white/10 shrink-0"
+      />
+    );
+  }
+  return (
+    <div className="w-9 h-9 rounded-full bg-[#102133] border border-white/10 shrink-0 flex items-center justify-center">
+      <Shirt className="w-4 h-4 text-text-muted" />
+    </div>
+  );
+}
+
+function LineupPlayerRow({ player }: { player: LineupPlayer }) {
+  return (
+    <div className="flex items-start gap-3 bg-[#040D17] border border-white/5 p-2.5">
+      <PlayerAvatar player={player} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[11px] text-text-muted w-5 shrink-0">{player.shirtNumber ?? ''}</span>
+          <span className="text-[12px] text-white font-semibold uppercase tracking-wide truncate">{player.name}</span>
+          {player.isCaptain && (
+            <span className="text-[8px] font-mono text-brand-primary font-black border border-brand-primary/40 rounded-full w-4 h-4 flex items-center justify-center shrink-0">C</span>
+          )}
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            {player.card && <span className={`w-2.5 h-3.5 rounded-sm ${player.card === 'yellow' ? 'bg-yellow-400' : 'bg-status-lose'}`} />}
+            {player.subOff && (
+              <span className="text-[9px] font-mono text-status-lose font-bold">↓{player.subOff.minute}</span>
+            )}
+            {player.subOnMinute && (
+              <span className="text-[9px] font-mono text-status-not-lose font-bold">↑{player.subOnMinute}</span>
+            )}
+          </div>
+        </div>
+        {player.subOff?.playerName && (
+          <div className="text-[9px] font-mono text-status-not-lose mt-0.5 pl-7 truncate">
+            ↑ {player.subOff.playerNumber ?? ''} {player.subOff.playerName}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LineupCard({ teamName, teamFlag, lineup, alignRight }: { teamName: string; teamFlag?: string; lineup: TeamLineup; alignRight?: boolean }) {
+  return (
+    <div className="space-y-4">
+      <div className={`flex items-center justify-between gap-2 pb-2 border-b border-white/10 ${alignRight ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex items-center gap-2 min-w-0 ${alignRight ? 'flex-row-reverse' : ''}`}>
+          <img
+            src={teamFlag || FALLBACK_TEAM_LOGO}
+            alt={teamName}
+            onError={(event) => { event.currentTarget.src = FALLBACK_TEAM_LOGO; }}
+            className="w-6 h-5 object-cover border border-white/10"
+          />
+          <span className="font-sans font-black text-[12px] uppercase tracking-wider text-white truncate">{teamName}</span>
+        </div>
+        {lineup.formation && (
+          <span className="font-mono text-[11px] font-bold text-brand-primary border border-brand-primary/30 px-2 py-0.5">{lineup.formation}</span>
+        )}
+      </div>
+      {lineup.coach && (
+        <div className="text-[8px] font-mono uppercase tracking-widest text-text-muted">HLV: <span className="text-white/80">{lineup.coach}</span></div>
+      )}
+      {POSITION_GROUPS.map((group) => {
+        const groupPlayers = lineup.starters.filter((player) => player.position === group.key);
+        if (groupPlayers.length === 0) return null;
+        return (
+          <div key={group.key} className="space-y-1.5">
+            <div className="text-[9px] font-mono uppercase tracking-widest text-text-muted font-bold">{group.label}</div>
+            {groupPlayers.map((player) => <LineupPlayerRow key={player.id ?? player.name} player={player} />)}
+          </div>
+        );
+      })}
+      {lineup.bench.length > 0 && (
+        <div className="pt-2 border-t border-white/5">
+          <div className="text-[9px] font-mono uppercase tracking-widest text-text-muted font-bold mb-1">Dự bị</div>
+          <div className="text-[10px] text-text-muted leading-relaxed">
+            {lineup.bench.map((player) => player.name).join(', ')}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const POWER_RANKING_LABELS: Record<PowerRankingLeader['category'], { title: string; scoreLabel: string }> = {
+  attacking: { title: 'Tấn công', scoreLabel: 'Điểm tấn công' },
+  creativity: { title: 'Sáng tạo', scoreLabel: 'Điểm sáng tạo' },
+  defending: { title: 'Phòng ngự', scoreLabel: 'Điểm phòng ngự' },
+};
+
+function PowerRankingCard({ leader }: { leader: PowerRankingLeader }) {
+  const labels = POWER_RANKING_LABELS[leader.category];
+  return (
+    <div>
+      <div className="text-[10px] font-mono uppercase tracking-widest text-text-muted font-bold mb-2">{labels.title}</div>
+      <div className="relative overflow-hidden bg-gradient-to-r from-brand-primary/20 to-brand-primary/5 border border-brand-primary/30 p-4 min-h-[120px] flex flex-col justify-between">
+        <div className="flex items-center gap-2 relative z-10">
+          {leader.teamFlag && (
+            <img
+              src={leader.teamFlag}
+              alt={leader.teamName}
+              onError={(event) => { event.currentTarget.style.display = 'none'; }}
+              className="w-5 h-4 object-cover border border-white/10"
+            />
+          )}
+          <span className="text-[10px] font-mono uppercase tracking-widest text-white/80">{leader.teamName}</span>
+        </div>
+        <div className="relative z-10">
+          <div className="font-display italic font-black text-2xl text-brand-primary leading-none">1st</div>
+          <div className="font-sans font-black text-[13px] uppercase tracking-wide text-white mt-1 truncate">{leader.playerName}</div>
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="font-mono font-black text-lg text-white">{leader.score.toFixed(2)}</span>
+            <span className="text-[8px] font-mono uppercase tracking-widest text-text-muted">{labels.scoreLabel}</span>
+          </div>
+        </div>
+        {leader.photoUrl && (
+          <img
+            src={leader.photoUrl}
+            alt={leader.playerName}
+            onError={(event) => { event.currentTarget.style.display = 'none'; }}
+            className="absolute right-0 bottom-0 h-full w-auto object-contain object-bottom opacity-90 pointer-events-none"
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatBarRow({ row }: { row: { label: string; home: number; away: number } }) {
+  const total = row.home + row.away;
+  const homePct = total > 0 ? (row.home / total) * 100 : 50;
+  const awayPct = total > 0 ? (row.away / total) * 100 : 50;
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[11px] font-mono mb-1">
+        <span className="text-white font-bold w-8 text-left">{row.home}</span>
+        <span className="text-text-muted uppercase tracking-widest text-[9px] text-center flex-1">{row.label}</span>
+        <span className="text-white font-bold w-8 text-right">{row.away}</span>
+      </div>
+      <div className="flex items-center gap-1 h-1.5">
+        <div className="flex-1 flex justify-end bg-white/5 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-white/60 rounded-full" style={{ width: `${homePct}%` }} />
+        </div>
+        <div className="flex-1 flex justify-start bg-white/5 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-brand-primary rounded-full" style={{ width: `${awayPct}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LiveStatistics({ stats, homeTeam, awayTeam, homeFlag, awayFlag }: { stats: MatchStats; homeTeam: string; awayTeam: string; homeFlag?: string; awayFlag?: string }) {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <img src={homeFlag || FALLBACK_TEAM_LOGO} alt={homeTeam} onError={(e) => { e.currentTarget.src = FALLBACK_TEAM_LOGO; }} className="w-6 h-5 object-cover border border-white/10" />
+          <span className="font-sans font-black text-[12px] uppercase tracking-wider text-white truncate">{homeTeam}</span>
+        </div>
+        <div className="flex items-center gap-2 min-w-0 flex-row-reverse">
+          <img src={awayFlag || FALLBACK_TEAM_LOGO} alt={awayTeam} onError={(e) => { e.currentTarget.src = FALLBACK_TEAM_LOGO; }} className="w-6 h-5 object-cover border border-white/10" />
+          <span className="font-sans font-black text-[12px] uppercase tracking-wider text-white truncate">{awayTeam}</span>
+        </div>
+      </div>
+
+      {/* Possession */}
+      <div>
+        <div className="text-center text-[9px] font-mono uppercase tracking-widest text-text-muted mb-2">Kiểm soát bóng</div>
+        <div className="flex items-center justify-between text-[13px] font-mono font-black text-white mb-1">
+          <span>{stats.homePossession}%</span>
+          <span>{stats.awayPossession}%</span>
+        </div>
+        <div className="flex h-2.5 rounded-full overflow-hidden">
+          <div className="bg-white/60" style={{ width: `${stats.homePossession}%` }} />
+          <div className="bg-yellow-400/70" style={{ width: `${stats.contestPossession}%` }} />
+          <div className="bg-brand-primary" style={{ width: `${stats.awayPossession}%` }} />
+        </div>
+        {stats.contestPossession > 0 && (
+          <div className="text-center text-[8px] font-mono uppercase tracking-widest text-text-muted mt-1">{stats.contestPossession}% tranh chấp</div>
+        )}
+      </div>
+
+      {stats.groups.map((group) => (
+        <div key={group.title} className="space-y-3">
+          <div className="text-center font-display italic font-bold text-white text-sm">{group.title}</div>
+          {group.rows.map((row) => <StatBarRow key={row.label} row={row} />)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function MatchDetails({
   currentPlayer,
   players,
@@ -50,6 +345,27 @@ export default function MatchDetails({
   predictions,
   onClose,
 }: MatchDetailsProps) {
+  const [insights, setInsights] = useState<MatchInsights | null>(null);
+  const [insightsStatus, setInsightsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    setInsightsStatus('loading');
+    setInsights(null);
+    fetchMatchInsights(match)
+      .then((data) => {
+        if (cancelled) return;
+        setInsights(data);
+        setInsightsStatus('ready');
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('Failed to load match insights:', error);
+        setInsightsStatus('error');
+      });
+    return () => { cancelled = true; };
+  }, [match.id]);
+
   // Find predictions for this match
   const matchPredictions = predictions.filter((p) => p.matchId === match.id);
 
@@ -464,6 +780,87 @@ export default function MatchDetails({
             ))}
           </div>
         </section>
+      )}
+
+      {/* FIFA match history: head-to-head, recent form, lineups */}
+      {insightsStatus === 'loading' && (
+        <section className="bg-[#0A1622] border border-white/10 rounded-none p-8 text-center text-[10px] font-mono uppercase tracking-widest text-text-muted animate-pulse">
+          Đang tải lịch sử đối đầu & phong độ từ FIFA…
+        </section>
+      )}
+
+      {insightsStatus === 'ready' && insights && (
+        <>
+          {insights.powerRanking.length > 0 && (
+            <section className="bg-[#0A1622] border border-white/10 rounded-none p-5 space-y-4">
+              <div className="flex items-center gap-2 border-b border-white/10 pb-3">
+                <Zap className="w-4 h-4 text-brand-primary" />
+                <h3 className="font-display italic font-bold text-lg text-white">power rankings</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {insights.powerRanking.map((leader) => (
+                  <PowerRankingCard key={leader.category} leader={leader} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {insights.stats && (
+            <section className="bg-[#0A1622] border border-white/10 rounded-none p-5 space-y-4">
+              <div className="flex items-center gap-2 border-b border-white/10 pb-3">
+                <Activity className="w-4 h-4 text-brand-primary" />
+                <h3 className="font-display italic font-bold text-lg text-white">thống kê trận đấu</h3>
+              </div>
+              <LiveStatistics
+                stats={insights.stats}
+                homeTeam={match.homeTeam}
+                awayTeam={match.awayTeam}
+                homeFlag={match.homeLogo}
+                awayFlag={match.awayLogo}
+              />
+            </section>
+          )}
+
+          {insights.headToHead.length > 0 && (
+            <section className="bg-[#0A1622] border border-white/10 rounded-none p-5 space-y-4">
+              <div className="flex items-center gap-2 border-b border-white/10 pb-3">
+                <Swords className="w-4 h-4 text-brand-primary" />
+                <h3 className="font-display italic font-bold text-lg text-white">lịch sử đối đầu</h3>
+              </div>
+              <div className="space-y-2">
+                {insights.headToHead.map((item, index) => (
+                  <HistoryRow key={item.matchId ?? index} item={item} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {(insights.homeForm.length > 0 || insights.awayForm.length > 0) && (
+            <section className="bg-[#0A1622] border border-white/10 rounded-none p-5 space-y-4">
+              <div className="flex items-center gap-2 border-b border-white/10 pb-3">
+                <History className="w-4 h-4 text-brand-primary" />
+                <h3 className="font-display italic font-bold text-lg text-white">phong độ gần đây</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormColumn teamName={match.homeTeam} teamFlag={match.homeLogo} form={insights.homeForm} />
+                <FormColumn teamName={match.awayTeam} teamFlag={match.awayLogo} form={insights.awayForm} />
+              </div>
+            </section>
+          )}
+
+          {(insights.homeLineup || insights.awayLineup) && (
+            <section className="bg-[#0A1622] border border-white/10 rounded-none p-5 space-y-4">
+              <div className="flex items-center gap-2 border-b border-white/10 pb-3">
+                <Shirt className="w-4 h-4 text-brand-primary" />
+                <h3 className="font-display italic font-bold text-lg text-white">đội hình ra sân</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {insights.homeLineup && <LineupCard teamName={match.homeTeam} teamFlag={match.homeLogo} lineup={insights.homeLineup} />}
+                {insights.awayLineup && <LineupCard teamName={match.awayTeam} teamFlag={match.awayLogo} lineup={insights.awayLineup} alignRight />}
+              </div>
+            </section>
+          )}
+        </>
       )}
     </div>
   );

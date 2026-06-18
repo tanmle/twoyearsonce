@@ -38,6 +38,31 @@ const isTodayOrTomorrowInVietnam = (match: Match) => {
   return kickoffKey === getVietnamDateKey(now) || kickoffKey === getVietnamDateKey(tomorrow);
 };
 
+function goalEventSuffix(type: string | undefined) {
+  if (type === 'penalty') return ' (P)';
+  if (type === 'own_goal') return ' (OG)';
+  return '';
+}
+
+function renderGoalLabel(event: { label?: string; minute?: number; stoppageMinute?: number }) {
+  if (event.label) return event.label;
+  if (event.minute === undefined) return undefined;
+  return event.stoppageMinute ? `${event.minute}+${event.stoppageMinute}'` : `${event.minute}'`;
+}
+
+function renderGoalEvent(event: NonNullable<Match['homeGoalEvents']>[number], index: number) {
+  const minute = renderGoalLabel(event);
+  return (
+    <div key={`${event.playerName}-${minute ?? index}`} className="truncate">
+      ⚽ {minute ? `${minute} ` : ''}{event.playerName}{goalEventSuffix(event.type)}
+    </div>
+  );
+}
+
+function renderScorerFallback(scorer: string) {
+  return <div key={scorer} className="truncate">⚽ {scorer}</div>;
+}
+
 interface MatchListProps {
   currentPlayer: Player;
   predictionPlayer: Player;
@@ -344,17 +369,17 @@ export default function MatchList({
                     </button>
                   </div>
 
-                  {((match.homeScorers && match.homeScorers.length > 0) || (match.awayScorers && match.awayScorers.length > 0)) && (
+                  {(((match.homeGoalEvents?.length ?? 0) > 0) || ((match.awayGoalEvents?.length ?? 0) > 0) || (match.homeScorers && match.homeScorers.length > 0) || (match.awayScorers && match.awayScorers.length > 0)) && (
                     <div className="mt-3 grid grid-cols-2 gap-3 text-[9px] font-mono text-text-muted">
                       <div className="space-y-1 text-left">
-                        {match.homeScorers?.map((scorer) => (
-                          <div key={scorer} className="truncate">⚽ {scorer}</div>
-                        ))}
+                        {(match.homeGoalEvents?.length ?? 0) > 0
+                          ? match.homeGoalEvents?.map(renderGoalEvent)
+                          : match.homeScorers?.map(renderScorerFallback)}
                       </div>
                       <div className="space-y-1 text-right">
-                        {match.awayScorers?.map((scorer) => (
-                          <div key={scorer} className="truncate">⚽ {scorer}</div>
-                        ))}
+                        {(match.awayGoalEvents?.length ?? 0) > 0
+                          ? match.awayGoalEvents?.map(renderGoalEvent)
+                          : match.awayScorers?.map(renderScorerFallback)}
                       </div>
                     </div>
                   )}
