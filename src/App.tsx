@@ -692,9 +692,10 @@ export default function App() {
       const syncedMatches = apiMatches.map((apiMatch) => {
         const existingMatch = existingMatchesById.get(apiMatch.id);
 
+        const apiHasGoals = (apiMatch.homeGoals ?? 0) + (apiMatch.awayGoals ?? 0) > 0;
         const preservedMatchDetails = {
-          homeGoalEvents: apiMatch.homeGoalEvents?.length ? apiMatch.homeGoalEvents : existingMatch?.homeGoalEvents,
-          awayGoalEvents: apiMatch.awayGoalEvents?.length ? apiMatch.awayGoalEvents : existingMatch?.awayGoalEvents,
+          homeGoalEvents: apiMatch.homeGoalEvents?.length ? apiMatch.homeGoalEvents : (apiHasGoals ? existingMatch?.homeGoalEvents : []),
+          awayGoalEvents: apiMatch.awayGoalEvents?.length ? apiMatch.awayGoalEvents : (apiHasGoals ? existingMatch?.awayGoalEvents : []),
           details: apiMatch.details && Object.keys(apiMatch.details).length > 0 ? apiMatch.details : existingMatch?.details,
         };
 

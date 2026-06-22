@@ -669,6 +669,7 @@ Deno.serve(async (req) => {
       const homeTeam = game.homeSquadName || 'TBD';
       const awayTeam = game.awaySquadName || 'TBD';
       const matchDetail = matchDetailsByKey.get(buildMatchKey(homeTeam, awayTeam));
+      const hasGoals = Number(game.homeScore ?? 0) + Number(game.awayScore ?? 0) > 0;
 
       return {
         id: matchId,
@@ -690,8 +691,8 @@ Deno.serve(async (req) => {
         away_goals: game.awayScore,
         home_scorers: parseGoalScorers(game.homeGoalScorersAssists, playerNames),
         away_scorers: parseGoalScorers(game.awayGoalScorersAssists, playerNames),
-        home_goal_events: matchDetail?.homeGoalEvents ?? existingMatch?.home_goal_events ?? [],
-        away_goal_events: matchDetail?.awayGoalEvents ?? existingMatch?.away_goal_events ?? [],
+        home_goal_events: hasGoals ? (matchDetail?.homeGoalEvents ?? existingMatch?.home_goal_events ?? []) : [],
+        away_goal_events: hasGoals ? (matchDetail?.awayGoalEvents ?? existingMatch?.away_goal_events ?? []) : [],
         match_details: matchDetail?.details ?? existingMatch?.match_details ?? {},
         live_time_text: status === 'LIVE' ? formatLiveTime(game) : null,
         is_hot: status === 'LIVE' || status === 'UPCOMING',
