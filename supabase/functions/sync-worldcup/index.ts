@@ -349,7 +349,10 @@ function buildPlayerNameMap(players: FifaPlayer[]) {
   return new Map(players.map((player) => [player.id, formatPlayerName(player)]));
 }
 
-function parseGoalScorers(raw: FifaTournament['homeGoalScorersAssists'], playerNames: Map<number, string>) {
+function parseGoalScorers(raw: FifaTournament['homeGoalScorersAssists'], playerNames: Map<number, string>, teamScore: number | null | undefined) {
+  // The fantasy feed sometimes lists a scorer on a 0-0 fixture (contradictory source data);
+  // trust the score and drop scorers when the team did not score.
+  if (!teamScore) return [];
   return (raw ?? []).map((goal) => playerNames.get(goal.playerId) ?? `#${goal.playerId}`);
 }
 
@@ -689,11 +692,11 @@ Deno.serve(async (req) => {
         status,
         home_goals: game.homeScore,
         away_goals: game.awayScore,
-        home_scorers: parseGoalScorers(game.homeGoalScorersAssists, playerNames),
-        away_scorers: parseGoalScorers(game.awayGoalScorersAssists, playerNames),
+        home_scorers: parseGoalScorers(game.homeGoalScorersAssists, playerNames, game.homeScore),
+        away_scorers: parseGoalScorers(game.awayGoalScorersAssists, playerNames, game.awayScore),
         home_goal_events: hasGoals ? (matchDetail?.homeGoalEvents ?? existingMatch?.home_goal_events ?? []) : [],
         away_goal_events: hasGoals ? (matchDetail?.awayGoalEvents ?? existingMatch?.away_goal_events ?? []) : [],
-        match_details: matchDetail?.details ?? existingMatch?.match_details ?? {},
+        match_details: matchDetail?.details ?? (hasGoals ? existingMatch?.match_details : undefined) ?? {},
         live_time_text: status === 'LIVE' ? formatLiveTime(game) : null,
         is_hot: status === 'LIVE' || status === 'UPCOMING',
         last_synced_at: syncedAt,

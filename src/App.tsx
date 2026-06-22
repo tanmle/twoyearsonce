@@ -696,7 +696,7 @@ export default function App() {
         const preservedMatchDetails = {
           homeGoalEvents: apiMatch.homeGoalEvents?.length ? apiMatch.homeGoalEvents : (apiHasGoals ? existingMatch?.homeGoalEvents : []),
           awayGoalEvents: apiMatch.awayGoalEvents?.length ? apiMatch.awayGoalEvents : (apiHasGoals ? existingMatch?.awayGoalEvents : []),
-          details: apiMatch.details && Object.keys(apiMatch.details).length > 0 ? apiMatch.details : existingMatch?.details,
+          details: apiMatch.details && Object.keys(apiMatch.details).length > 0 ? apiMatch.details : (apiHasGoals ? existingMatch?.details : undefined),
         };
 
         if (existingMatch?.handicapIsManual) {

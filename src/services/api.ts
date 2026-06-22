@@ -139,7 +139,7 @@ const normalizeName = (name: string) => {
   return TEAM_ALIASES[clean] || clean;
 };
 
-const buildMatchKey = (homeName: string, awayName: string) => `${normalizeName(homeName)}_${normalizeName(awayName)}`;
+export const buildMatchKey = (homeName: string, awayName: string) => `${normalizeName(homeName)}_${normalizeName(awayName)}`;
 
 const VIETNAM_TIME_ZONE = 'Asia/Bangkok';
 
@@ -207,7 +207,10 @@ function buildPlayerNameMap(players: FifaPlayer[]) {
   return new Map(players.map((player) => [player.id, formatPlayerName(player)]));
 }
 
-function parseGoalScorers(raw: FifaTournament['homeGoalScorersAssists'], playerNames: Map<number, string>) {
+function parseGoalScorers(raw: FifaTournament['homeGoalScorersAssists'], playerNames: Map<number, string>, teamScore: number | null | undefined) {
+  // The fantasy feed sometimes lists a scorer on a 0-0 fixture (contradictory source data);
+  // trust the score and drop scorers when the team did not score.
+  if (!teamScore) return [];
   return (raw ?? []).map((goal) => playerNames.get(goal.playerId) ?? `#${goal.playerId}`);
 }
 
@@ -476,8 +479,8 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
         status,
         homeGoals: game.homeScore ?? undefined,
         awayGoals: game.awayScore ?? undefined,
-        homeScorers: parseGoalScorers(game.homeGoalScorersAssists, playerNames),
-        awayScorers: parseGoalScorers(game.awayGoalScorersAssists, playerNames),
+        homeScorers: parseGoalScorers(game.homeGoalScorersAssists, playerNames, game.homeScore),
+        awayScorers: parseGoalScorers(game.awayGoalScorersAssists, playerNames, game.awayScore),
         homeGoalEvents: matchDetail?.homeGoalEvents ?? [],
         awayGoalEvents: matchDetail?.awayGoalEvents ?? [],
         details: matchDetail?.details,

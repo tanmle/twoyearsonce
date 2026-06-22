@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Network capture files (large; break Vite's file watcher if left in repo root)
+*.har

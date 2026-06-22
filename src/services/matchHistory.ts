@@ -10,6 +10,7 @@ import {
   SubstitutionEvent,
   TeamLineup,
 } from '../types';
+import { buildMatchKey } from './api';
 
 const FIFA_LIVE_PREFIX = 'https://api.fifa.com/api/v3/live/football';
 const FIFA_CALENDAR_URL = 'https://api.fifa.com/api/v3/calendar/matches';
@@ -157,26 +158,39 @@ function parseMatchCentreIds(url?: string): FifaIds | undefined {
 
 /**
  * Resolve the FIFA live-match ids for a Match. Finished/live matches already carry the
- * match-centre URL (synced from FIFA); upcoming ones are resolved from the WC26 calendar
- * by MatchNumber (which equals the fantasy game id stored in externalId).
+ * match-centre URL (synced from FIFA); otherwise we resolve from the WC26 calendar by
+ * matching team names. NOTE: the fantasy game id (stored in externalId) is NOT the FIFA
+ * MatchNumber — the two id spaces differ — so we must never join on it.
  */
 async function resolveFifaIds(match: Match): Promise<FifaIds | undefined> {
-  const fromUrl = parseMatchCentreIds(match.details?.fifaMatchCentreUrl);
-  if (fromUrl) return fromUrl;
-
-  const matchNumber = Number(match.externalId);
-  if (!Number.isFinite(matchNumber)) return undefined;
+  const targetKey = buildMatchKey(match.homeTeam, match.awayTeam);
 
   const calendarUrl = `${FIFA_CALENDAR_URL}?language=en&count=500&idCompetition=${WC26_COMPETITION}&idSeason=${WC26_SEASON}`;
   const calendar = await fetchFifaJson<{ Results?: FifaCalendarResult[] }>(calendarUrl);
-  const entry = (calendar.Results ?? []).find((result) => result.MatchNumber === matchNumber);
-  if (!entry?.IdMatch || !entry.IdStage) return undefined;
+  const candidates = (calendar.Results ?? []).filter((result) => (
+    result.IdMatch && result.IdStage &&
+    buildMatchKey(text(result.Home?.TeamName) ?? '', text(result.Away?.TeamName) ?? '') === targetKey
+  ));
+  // Fall back to the synced match-centre URL only when the calendar has no real-team fixture
+  // yet (e.g. knockout placeholders); the URL itself can be stale from an earlier bad sync.
+  if (candidates.length === 0) return parseMatchCentreIds(match.details?.fifaMatchCentreUrl);
+
+  // The same pairing can occur more than once across a tournament; pick the fixture closest
+  // to this match's kickoff when we have a timestamp to disambiguate.
+  const kickoff = match.kickoffAt ? Date.parse(match.kickoffAt) : NaN;
+  const entry = Number.isFinite(kickoff)
+    ? candidates.reduce((best, result) => {
+        const diff = Math.abs(Date.parse(result.Date) - kickoff);
+        const bestDiff = Math.abs(Date.parse(best.Date) - kickoff);
+        return Number.isFinite(diff) && (!Number.isFinite(bestDiff) || diff < bestDiff) ? result : best;
+      })
+    : candidates[0];
 
   return {
     competitionId: entry.IdCompetition ?? WC26_COMPETITION,
     seasonId: entry.IdSeason ?? WC26_SEASON,
-    stageId: entry.IdStage,
-    matchId: entry.IdMatch,
+    stageId: entry.IdStage!,
+    matchId: entry.IdMatch!,
   };
 }
 
