@@ -76,6 +76,8 @@ interface FifaCalendarMatch {
   IdGroup?: string;
   IdMatch: string;
   MatchNumber?: number;
+  Home?: { TeamName?: FifaLocalizedText[] };
+  Away?: { TeamName?: FifaLocalizedText[] };
 }
 
 interface FifaLiveGoal {
@@ -136,6 +138,8 @@ const normalizeName = (name: string) => {
   const clean = name.toLowerCase().replace(/[^a-z]/g, '');
   return TEAM_ALIASES[clean] || clean;
 };
+
+const buildMatchKey = (homeName: string, awayName: string) => `${normalizeName(homeName)}_${normalizeName(awayName)}`;
 
 const VIETNAM_TIME_ZONE = 'Asia/Bangkok';
 
@@ -330,28 +334,36 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
   return results;
 }
 
-async function fetchMatchDetailsByFantasyMatchNumber(syncedAt: string, targetMatchNumbers: Set<number>) {
-  const detailsByMatchNumber = new Map<number, MatchDetailPayload>();
-  if (targetMatchNumbers.size === 0) return detailsByMatchNumber;
+function buildCalendarMatchKey(match: FifaCalendarMatch) {
+  const home = localizedText(match.Home?.TeamName);
+  const away = localizedText(match.Away?.TeamName);
+  if (!home || !away) return undefined;
+  return buildMatchKey(home, away);
+}
+
+async function fetchMatchDetailsByMatchKey(syncedAt: string, targetMatchKeys: Set<string>) {
+  const detailsByMatchKey = new Map<string, MatchDetailPayload>();
+  if (targetMatchKeys.size === 0) return detailsByMatchKey;
 
   try {
     const calendarData = await fetch(FIFA_CALENDAR_URL, { headers: { Accept: 'application/json' } })
       .then((response) => response.ok ? response.json() as Promise<{ Results?: FifaCalendarMatch[] }> : { Results: [] });
-    const calendarMatches = (calendarData.Results ?? []).filter((match) => (
-      match.MatchNumber !== undefined && targetMatchNumbers.has(match.MatchNumber)
-    ));
+    const calendarMatches = (calendarData.Results ?? [])
+      .map((match) => ({ match, key: buildCalendarMatchKey(match) }))
+      .filter((entry): entry is { match: FifaCalendarMatch; key: string } => (
+        entry.key !== undefined && targetMatchKeys.has(entry.key)
+      ));
 
-    await mapWithConcurrency(calendarMatches, 4, async (calendarMatch) => {
-      if (calendarMatch.MatchNumber === undefined) return;
+    await mapWithConcurrency(calendarMatches, 4, async ({ match: calendarMatch, key }) => {
       try {
         const detailUrl = `${FIFA_LIVE_MATCH_URL_PREFIX}/${calendarMatch.IdCompetition}/${calendarMatch.IdSeason}/${calendarMatch.IdStage}/${calendarMatch.IdMatch}?language=en`;
         const detail = await fetch(detailUrl, { headers: { Accept: 'application/json' } }).then((response) => {
           if (!response.ok) throw new Error(`FIFA detail fetch failed: ${response.status}`);
           return response.json() as Promise<FifaLiveMatch>;
         });
-        detailsByMatchNumber.set(calendarMatch.MatchNumber, mapMatchDetails(detail, syncedAt));
+        detailsByMatchKey.set(key, mapMatchDetails(detail, syncedAt));
       } catch (error) {
-        detailsByMatchNumber.set(calendarMatch.MatchNumber, {
+        detailsByMatchKey.set(key, {
           homeGoalEvents: [],
           awayGoalEvents: [],
           details: {
@@ -367,7 +379,7 @@ async function fetchMatchDetailsByFantasyMatchNumber(syncedAt: string, targetMat
   } catch (error) {
     console.warn('Failed to fetch FIFA match detail index:', error);
   }
-  return detailsByMatchNumber;
+  return detailsByMatchKey;
 }
 
 async function fetchOddsHandicapMap() {
@@ -428,12 +440,14 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
     const squadGroups = buildSquadGroupMap(squadsData ?? []);
     const teamLogos = buildTeamLogoMap(teamFlagsData.teams ?? []);
     const syncedAt = new Date().toISOString();
-    const detailTargetMatchNumbers = new Set<number>();
+    const detailTargetMatchKeys = new Set<string>();
     (roundsData ?? []).forEach((round) => (round.tournaments ?? []).forEach((game) => {
       const hasGoal = Number(game.homeScore ?? 0) + Number(game.awayScore ?? 0) > 0;
-      if (hasGoal || mapFifaStatus(game) === 'LIVE') detailTargetMatchNumbers.add(game.id);
+      if (hasGoal || mapFifaStatus(game) === 'LIVE') {
+        detailTargetMatchKeys.add(buildMatchKey(game.homeSquadName || 'TBD', game.awaySquadName || 'TBD'));
+      }
     }));
-    const matchDetailsByNumber = await fetchMatchDetailsByFantasyMatchNumber(syncedAt, detailTargetMatchNumbers);
+    const matchDetailsByKey = await fetchMatchDetailsByMatchKey(syncedAt, detailTargetMatchKeys);
     const oddsUpdatedAt = oddsMap.size > 0 ? syncedAt : undefined;
 
     return (roundsData ?? []).flatMap((round) => (round.tournaments ?? []).map((game) => {
@@ -442,9 +456,9 @@ export async function fetchWorldCupMatches(): Promise<Match[]> {
       const status = mapFifaStatus(game);
       const homeTeamName = game.homeSquadName || 'TBD';
       const awayTeamName = game.awaySquadName || 'TBD';
-      const matchKey = `${normalizeName(homeTeamName)}_${normalizeName(awayTeamName)}`;
+      const matchKey = buildMatchKey(homeTeamName, awayTeamName);
       const handicap = oddsMap.get(matchKey) ?? 0;
-      const matchDetail = matchDetailsByNumber.get(game.id);
+      const matchDetail = matchDetailsByKey.get(matchKey);
 
       return {
         id: `wc26_${game.id}`,

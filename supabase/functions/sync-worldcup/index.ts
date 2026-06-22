@@ -93,6 +93,8 @@ interface FifaCalendarMatch {
   IdGroup?: string;
   IdMatch: string;
   MatchNumber?: number;
+  Home?: { TeamName?: FifaLocalizedText[] };
+  Away?: { TeamName?: FifaLocalizedText[] };
 }
 
 interface FifaLiveGoal {
@@ -206,6 +208,10 @@ function formatTimeGmt7(date: Date) {
 function normalizeName(name: string) {
   const clean = name.toLowerCase().replace(/[^a-z]/g, '');
   return TEAM_ALIASES[clean] || clean;
+}
+
+function buildMatchKey(homeName: string, awayName: string) {
+  return `${normalizeName(homeName)}_${normalizeName(awayName)}`;
 }
 
 function teamBadge(abbr: string | undefined, name: string) {
@@ -506,25 +512,32 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, mapper: (item
   return results;
 }
 
-async function fetchMatchDetailsByFantasyMatchNumber(syncedAt: string, targetMatchNumbers: Set<number>) {
-  const detailsByMatchNumber = new Map<number, MatchDetailPayload>();
-  if (targetMatchNumbers.size === 0) return detailsByMatchNumber;
+function buildCalendarMatchKey(match: FifaCalendarMatch) {
+  const home = localizedText(match.Home?.TeamName);
+  const away = localizedText(match.Away?.TeamName);
+  if (!home || !away) return undefined;
+  return buildMatchKey(home, away);
+}
+
+async function fetchMatchDetailsByMatchKey(syncedAt: string, targetMatchKeys: Set<string>) {
+  const detailsByMatchKey = new Map<string, MatchDetailPayload>();
+  if (targetMatchKeys.size === 0) return detailsByMatchKey;
 
   try {
     const calendarData = await fetchFifaApiJson<{ Results?: FifaCalendarMatch[] }>(FIFA_CALENDAR_URL);
-    const calendarMatches = (calendarData.Results ?? []).filter((match) => (
-      match.MatchNumber !== undefined && targetMatchNumbers.has(match.MatchNumber)
-    ));
+    const calendarMatches = (calendarData.Results ?? [])
+      .map((match) => ({ match, key: buildCalendarMatchKey(match) }))
+      .filter((entry): entry is { match: FifaCalendarMatch; key: string } => (
+        entry.key !== undefined && targetMatchKeys.has(entry.key)
+      ));
 
-    await mapWithConcurrency(calendarMatches, 4, async (calendarMatch) => {
-      if (calendarMatch.MatchNumber === undefined) return;
-
+    await mapWithConcurrency(calendarMatches, 4, async ({ match: calendarMatch, key }) => {
       try {
         const detailUrl = `${FIFA_LIVE_MATCH_URL_PREFIX}/${calendarMatch.IdCompetition}/${calendarMatch.IdSeason}/${calendarMatch.IdStage}/${calendarMatch.IdMatch}?language=en`;
         const detail = await fetchFifaApiJson<FifaLiveMatch>(detailUrl);
-        detailsByMatchNumber.set(calendarMatch.MatchNumber, mapMatchDetails(detail, syncedAt));
+        detailsByMatchKey.set(key, mapMatchDetails(detail, syncedAt));
       } catch (error) {
-        detailsByMatchNumber.set(calendarMatch.MatchNumber, {
+        detailsByMatchKey.set(key, {
           homeGoalEvents: [],
           awayGoalEvents: [],
           details: {
@@ -541,7 +554,7 @@ async function fetchMatchDetailsByFantasyMatchNumber(syncedAt: string, targetMat
     console.warn('Failed to fetch FIFA match detail index:', error);
   }
 
-  return detailsByMatchNumber;
+  return detailsByMatchKey;
 }
 
 async function fetchOddsHandicapMap(oddsApiKey: string) {
@@ -637,12 +650,14 @@ Deno.serve(async (req) => {
     cachedFlagsByCode.forEach((flagUrl, code) => teamLogos.set(code, flagUrl));
     const existingMatchesById = new Map((existingMatchesResult.data ?? []).map((match) => [match.id, match]));
     const syncedAt = new Date().toISOString();
-    const detailTargetMatchNumbers = new Set<number>();
+    const detailTargetMatchKeys = new Set<string>();
     (roundsData ?? []).forEach((round) => (round.tournaments ?? []).forEach((game) => {
       const hasGoal = Number(game.homeScore ?? 0) + Number(game.awayScore ?? 0) > 0;
-      if (hasGoal || mapFifaStatus(game) === 'LIVE') detailTargetMatchNumbers.add(game.id);
+      if (hasGoal || mapFifaStatus(game) === 'LIVE') {
+        detailTargetMatchKeys.add(buildMatchKey(game.homeSquadName || 'TBD', game.awaySquadName || 'TBD'));
+      }
     }));
-    const matchDetailsByNumber = await fetchMatchDetailsByFantasyMatchNumber(syncedAt, detailTargetMatchNumbers);
+    const matchDetailsByKey = await fetchMatchDetailsByMatchKey(syncedAt, detailTargetMatchKeys);
 
     const matches = (roundsData ?? []).flatMap((round) => (round.tournaments ?? []).map((game) => {
       const fixtureDate = new Date(game.date);
@@ -653,7 +668,7 @@ Deno.serve(async (req) => {
       const handicap = Number(existingMatch?.handicap ?? 0);
       const homeTeam = game.homeSquadName || 'TBD';
       const awayTeam = game.awaySquadName || 'TBD';
-      const matchDetail = matchDetailsByNumber.get(game.id);
+      const matchDetail = matchDetailsByKey.get(buildMatchKey(homeTeam, awayTeam));
 
       return {
         id: matchId,
@@ -805,8 +820,8 @@ Deno.serve(async (req) => {
       oddsApiCalled,
       handicapsUpdated,
       matchesWithGoalEvents: matchesWithGoalEventsCount,
-      detailMatches: matchDetailsByNumber.size,
-      detailTargets: detailTargetMatchNumbers.size,
+      detailMatches: matchDetailsByKey.size,
+      detailTargets: detailTargetMatchKeys.size,
       cachedFlagMatches: cachedFlagsCount,
       syncedAt,
     }), {
