@@ -222,7 +222,7 @@ export default function AdminBettingGrid({
             BeerCup • Admin
           </span>
           <h2 className="font-display italic font-medium text-4xl text-white tracking-tight mt-1">
-            đặt kèo
+            chọn đội
           </h2>
           <p className="text-[10px] text-text-muted mt-2 font-mono uppercase tracking-widest">
             Chọn đội giúp từng người chơi. Trận khóa/xong cần mở khóa trước khi sửa.

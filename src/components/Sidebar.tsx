@@ -21,7 +21,7 @@ export default function Sidebar({
     { id: 'leaderboard', label: 'Bảng xếp hạng', icon: Trophy },
     ...(currentPlayer.role === 'admin'
       ? [
-          { id: 'betting-grid', label: 'Đặt kèo', icon: Table2 },
+          { id: 'betting-grid', label: 'Chọn đội', icon: Table2 },
           { id: 'profile', label: 'Tài khoản', icon: Users },
         ]
       : []),
