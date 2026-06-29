@@ -143,6 +143,8 @@ interface MatchForSettlement {
   status: MatchStatus;
   homeGoals?: number;
   awayGoals?: number;
+  homeGoalEvents?: GoalEvent[];
+  awayGoalEvents?: GoalEvent[];
   handicap: number;
   matchType?: string;
 }
@@ -586,9 +588,21 @@ async function fetchOddsHandicapMap(oddsApiKey: string) {
 }
 
 const EPSILON = 0.0001;
+// Goals after the 90th minute (extra time) are excluded from settlement; second-half
+// stoppage time is reported as minute 90 ("90+x'") and therefore stays in.
+const REGULAR_TIME_LAST_MINUTE = 90;
 
 function isEqual(value: number, target: number) {
   return Math.abs(value - target) < EPSILON;
+}
+
+// Regular-time (90') goal count from goal events, or null when events are missing/partial.
+// The FIFA score includes extra-time goals, so settling on it would be wrong for knockouts.
+function regularTimeGoals(events: GoalEvent[] | undefined, finalGoals: number): number | null {
+  const list = events ?? [];
+  if (list.length !== finalGoals) return null;
+  if (list.some((event) => !Number.isFinite(event.minute))) return null;
+  return list.filter((event) => (event.minute as number) <= REGULAR_TIME_LAST_MINUTE).length;
 }
 
 function settlePrediction(match: MatchForSettlement, prediction: PredictionRow): { status?: SettlementStatus; penaltyVnd: number } {
@@ -601,7 +615,13 @@ function settlePrediction(match: MatchForSettlement, prediction: PredictionRow):
     return { penaltyVnd: 0 };
   }
 
-  const homeMargin = match.homeGoals + match.handicap - match.awayGoals;
+  const homeRegular = regularTimeGoals(match.homeGoalEvents, match.homeGoals);
+  const awayRegular = regularTimeGoals(match.awayGoalEvents, match.awayGoals);
+  const useRegular = homeRegular !== null && awayRegular !== null;
+  const homeGoals = useRegular ? homeRegular : match.homeGoals;
+  const awayGoals = useRegular ? awayRegular : match.awayGoals;
+
+  const homeMargin = homeGoals + match.handicap - awayGoals;
   const selectedMargin = prediction.choice === 'HOME' ? homeMargin : -homeMargin;
   const isPostGroupMatch = Boolean(match.matchType && match.matchType !== 'group');
   const usesHopeStar = prediction.hope_star && isPostGroupMatch;
@@ -770,6 +790,8 @@ Deno.serve(async (req) => {
           status: match.status,
           homeGoals: match.home_goals ?? undefined,
           awayGoals: match.away_goals ?? undefined,
+          homeGoalEvents: match.home_goal_events ?? undefined,
+          awayGoalEvents: match.away_goal_events ?? undefined,
           handicap: Number(match.handicap ?? 0),
           matchType: match.match_type ?? undefined,
         }, prediction);
